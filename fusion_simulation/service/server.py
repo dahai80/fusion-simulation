@@ -89,8 +89,10 @@ class SimulationServer:
                 )
             self._server = grpc_server(
                 futures.ThreadPoolExecutor(max_workers=self._config.max_workers),
-                maximum_receive_message_length=self._config.max_message_size,
-                maximum_send_message_length=self._config.max_message_size,
+                options=[
+                    ("grpc.max_receive_message_length", self._config.max_message_size),
+                    ("grpc.max_send_message_length", self._config.max_message_size),
+                ],
             )
             from fusion_simulation.service.proto.simulation_pb2_grpc import (
                 add_SimulationServiceServicer_to_server,
