@@ -191,7 +191,7 @@ fusion-sim test --model=policy --engine=lerobot --episodes=5
 fusion-sim bench --model=policy --output=report.md
 
 # Service
-fusion-sim service start --port=50051 --metrics-port=8081
+fusion-sim service start --port=50051 --metrics-port=8081 --gui
 fusion-sim service stop
 fusion-sim service health
 
@@ -202,6 +202,27 @@ fusion-sim gateway register --gateway-url=http://localhost:11432
 fusion-sim kernel run --steps=100 --headless
 fusion-sim kernel status
 ```
+
+## Web Dashboard GUI
+
+5-page Web Dashboard per PRD Section 7, served by FastAPI on port 8080:
+
+```bash
+fusion-sim service start --gui --gui-port 8080
+# Open http://localhost:8080
+```
+
+| Page | Features |
+|------|----------|
+| Welcome | Env auto-detect (PyBullet/gRPC/MLX/Service), quick templates |
+| Workstation | 4-zone layout: sidebar + viewport + inspector + statusbar, transport controls, real-time metrics |
+| Agent Orchestration | Agent CRUD, prompt editor, role config |
+| Data & Recording | Snapshot save/restore, export buttons |
+| Settings | Kernel/AI/Service config, env check |
+
+API: REST (`/api/*`) + WebSocket (`/ws/events`) + static files.
+
+> **PRD Gap**: Current Web Dashboard is a V0.1 interim solution. PRD requires SwiftUI + Metal native client (V0.3). See `docs/gui-prd-gap-analysis.md` for full comparison.
 
 ## Testing
 
@@ -288,6 +309,11 @@ fusion_simulation/
 ├── render/         # Render engine
 │   ├── base.py
 │   └── pybullet_render.py
+├── gui/            # Web Dashboard (FastAPI + static HTML)
+│   ├── __init__.py
+│   ├── app.py
+│   └── static/
+│       └── index.html
 ├── api/            # REST API (placeholder)
 └── cli/            # Command-line interface
     └── __init__.py
