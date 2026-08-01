@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package fusion_simulation;
+
+service SimulationService {
+  rpc Init(InitRequest) returns (InitResponse);
+  rpc Step(StepRequest) returns (StepResponse);
+  rpc Reset(ResetRequest) returns (ResetResponse);
+  rpc GetStatus(StatusRequest) returns (StatusResponse);
+  rpc StreamEvents(StreamEventsRequest) returns (stream EventResponse);
+  rpc LoadScene(LoadSceneRequest) returns (LoadSceneResponse);
+  rpc SaveSnapshot(SaveSnapshotRequest) returns (SaveSnapshotResponse);
+  rpc RestoreSnapshot(RestoreSnapshotRequest) returns (RestoreSnapshotResponse);
+  rpc StreamSensorData(StreamSensorDataRequest) returns (stream SensorDataResponse);
+  rpc StreamSimState(stream SimStateRequest) returns (stream SimStateResponse);
+}
+
+message InitRequest {
+  double physics_dt = 1;
+  double render_dt = 2;
+  bool headless = 3;
+  int32 seed = 4;
+}
+
+message InitResponse {
+  bool initialized = 1;
+  double sim_time = 2;
+}
+
+message StepRequest {
+  int32 num_steps = 1;
+}
+
+message StepResponse {
+  double sim_time = 1;
+  int32 frame_count = 2;
+  double physics_step_ms = 3;
+  double sensor_collect_ms = 4;
+  double agent_decide_ms = 5;
+  double render_ms = 6;
+  double total_ms = 7;
+}
+
+message ResetRequest {}
+
+message ResetResponse {
+  bool reset = 1;
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+  bool initialized = 1;
+  bool running = 2;
+  double sim_time = 3;
+  int32 frame_count = 4;
+  int32 entity_count = 5;
+  double real_time_factor = 6;
+  string state = 7;
+  bool paused = 8;
+}
+
+message StreamEventsRequest {
+  repeated string event_kinds = 1;
+}
+
+message EventResponse {
+  string kind = 1;
+  double sim_time = 2;
+  string data_json = 3;
+}
+
+message LoadSceneRequest {
+  string name = 1;
+  string scene_json = 2;
+}
+
+message LoadSceneResponse {
+  bool loaded = 1;
+  string result_json = 2;
+}
+
+message SaveSnapshotRequest {
+  string name = 1;
+}
+
+message SaveSnapshotResponse {
+  string snapshot_id = 1;
+}
+
+message RestoreSnapshotRequest {
+  string snapshot_id = 1;
+}
+
+message RestoreSnapshotResponse {
+  bool restored = 1;
+}
+
+message StreamSensorDataRequest {
+  repeated string sensor_names = 1;
+  double interval_sec = 2;
+  int32 max_frames = 3;
+}
+
+message SensorDataResponse {
+  double sim_time = 1;
+  int32 frame_count = 2;
+  string sensor_name = 3;
+  string data_json = 4;
+}
+
+message SimStateRequest {
+  string command = 1;
+  string params_json = 2;
+}
+
+message SimStateResponse {
+  double sim_time = 1;
+  int32 frame_count = 2;
+  string state_json = 3;
+}

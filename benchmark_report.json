@@ -1,0 +1,46 @@
+{
+  "title": "Fusion-Simulation Performance Benchmark Report",
+  "timestamp": "2026-08-01 20:26:31",
+  "platform": "Apple Silicon",
+  "results": [
+    {
+      "name": "kernel_step",
+      "steps": 500,
+      "elapsed_s": 0.0028,
+      "per_step_ms": 0.006
+    },
+    {
+      "name": "sensor_observation",
+      "sensors": 5,
+      "observations": 2000,
+      "elapsed_s": 0.002,
+      "per_obs_us": 1.0
+    },
+    {
+      "name": "agent_decision",
+      "agents": 3,
+      "decisions": 200,
+      "elapsed_s": 0.3215,
+      "per_decision_ms": 1.607
+    },
+    {
+      "name": "ecs_create",
+      "entities": 2000,
+      "elapsed_s": 0.0079,
+      "per_entity_us": 4.0
+    },
+    {
+      "name": "event_bus",
+      "events": 50000,
+      "elapsed_s": 0.0593,
+      "per_event_us": 1.19,
+      "delivered": 50000
+    },
+    {
+      "name": "metrics_collector",
+      "ops": 100000,
+      "elapsed_s": 0.0111,
+      "per_op_us": 0.11
+    }
+  ]
+}
