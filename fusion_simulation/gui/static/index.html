@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fusion-Simulation Dashboard</title>
+<style>
+:root {
+    --bg: #1a1a2e; --bg2: #16213e; --bg3: #0f3460;
+    --fg: #e0e0e0; --fg2: #a0a0b0; --accent: #00d4ff;
+    --green: #00e676; --red: #ff5252; --yellow: #ffd740;
+    --card: #1e2a4a; --border: #2a3a5c; --sidebar-w: 220px;
+    --inspector-w: 300px; --statusbar-h: 40px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Helvetica Neue', sans-serif;
+       background: var(--bg); color: var(--fg); overflow: hidden; height: 100vh; }
+a { color: var(--accent); text-decoration: none; }
+button { cursor: pointer; border: none; border-radius: 6px; padding: 6px 14px;
+         font-size: 13px; font-weight: 500; transition: all .15s; }
+input, select { background: var(--bg2); color: var(--fg); border: 1px solid var(--border);
+                border-radius: 4px; padding: 6px 10px; font-size: 13px; }
+.page { display: none; height: 100vh; }
+.page.active { display: flex; }
+
+/* Welcome Page */
+#welcome { flex-direction: column; align-items: center; justify-content: center; gap: 32px; }
+#welcome .logo { font-size: 42px; font-weight: 700; color: var(--accent); letter-spacing: -1px; }
+#welcome .version { color: var(--fg2); font-size: 14px; margin-top: -20px; }
+#welcome .env-check { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; max-width: 500px; width: 100%; }
+.env-item { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+            padding: 12px 16px; display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.env-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.env-dot.ok { background: var(--green); } .env-dot.fail { background: var(--red); }
+#welcome .actions { display: flex; gap: 16px; }
+#welcome .actions button { padding: 14px 28px; font-size: 15px; border-radius: 10px; }
+.btn-primary { background: var(--accent); color: #000; }
+.btn-primary:hover { opacity: 0.85; }
+.btn-secondary { background: var(--bg3); color: var(--fg); border: 1px solid var(--border); }
+.btn-secondary:hover { border-color: var(--accent); }
+.recent-projects { color: var(--fg2); font-size: 13px; max-width: 500px; width: 100%; }
+.recent-projects h4 { margin-bottom: 8px; color: var(--fg); }
+
+/* Simulation Workstation (4-zone layout) */
+#workstation { flex-direction: column; }
+#workstation .top-row { display: flex; flex: 1; overflow: hidden; }
+#workstation .sidebar { width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border);
+                        display: flex; flex-direction: column; overflow-y: auto; }
+#workstation .main-area { flex: 1; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
+#workstation .inspector { width: var(--inspector-w); background: var(--bg2); border-left: 1px solid var(--border);
+                          display: flex; flex-direction: column; overflow-y: auto; }
+#workstation .statusbar { height: var(--statusbar-h); background: var(--bg2); border-top: 1px solid var(--border);
+                          display: flex; align-items: center; padding: 0 16px; gap: 20px; font-size: 12px; }
+
+.sidebar .nav-item { padding: 10px 16px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+                     border-left: 3px solid transparent; transition: all .15s; }
+.sidebar .nav-item:hover { background: var(--bg3); }
+.sidebar .nav-item.active { border-left-color: var(--accent); background: rgba(0,212,255,.08); color: var(--accent); }
+.sidebar .section-title { padding: 12px 16px 6px; font-size: 11px; font-weight: 600; color: var(--fg2);
+                          text-transform: uppercase; letter-spacing: .5px; }
+.sidebar .entity-item { padding: 6px 16px 6px 32px; font-size: 12px; cursor: pointer; color: var(--fg2); }
+.sidebar .entity-item:hover { color: var(--fg); background: var(--bg3); }
+
+.viewport { flex: 1; background: #0a0a1a; display: flex; align-items: center; justify-content: center;
+            position: relative; min-height: 200px; }
+.viewport canvas { width: 100%; height: 100%; }
+.viewport .overlay { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; }
+.viewport .placeholder { color: var(--fg2); font-size: 14px; text-align: center; }
+
+.transport { display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+             background: var(--bg2); border-top: 1px solid var(--border); }
+.transport button { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+                   background: var(--bg3); color: var(--fg); border-radius: 50%; font-size: 16px; }
+.transport button:hover { background: var(--accent); color: #000; }
+.transport button.active { background: var(--green); color: #000; }
+.speed-control { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-left: 12px; }
+.speed-control input { width: 60px; }
+
+.inspector .tab-bar { display: flex; border-bottom: 1px solid var(--border); }
+.inspector .tab { padding: 10px 14px; font-size: 12px; cursor: pointer; color: var(--fg2);
+                  border-bottom: 2px solid transparent; }
+.inspector .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.inspector .tab-content { padding: 12px; flex: 1; overflow-y: auto; }
+.prop-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 12px;
+            border-bottom: 1px solid var(--border); }
+.prop-row .label { color: var(--fg2); }
+.prop-row .value { color: var(--fg); font-weight: 500; }
+.metric-card { background: var(--bg); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; }
+.metric-card .metric-label { font-size: 11px; color: var(--fg2); text-transform: uppercase; }
+.metric-card .metric-value { font-size: 20px; font-weight: 600; margin-top: 2px; }
+
+.statusbar .indicator { width: 8px; height: 8px; border-radius: 50%; }
+.statusbar .indicator.ok { background: var(--green); }
+.statusbar .indicator.warn { background: var(--yellow); }
+.statusbar .indicator.err { background: var(--red); }
+
+/* Agent Orchestration Page */
+#agents { flex-direction: column; }
+#agents .page-header { padding: 16px 24px; border-bottom: 1px solid var(--border);
+                       display: flex; justify-content: space-between; align-items: center; }
+#agents .page-body { display: flex; flex: 1; overflow: hidden; }
+#agents .agent-list { width: 280px; background: var(--bg2); border-right: 1px solid var(--border);
+                      overflow-y: auto; padding: 12px; }
+#agents .agent-detail { flex: 1; padding: 20px; overflow-y: auto; }
+.agent-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+              padding: 12px; margin-bottom: 8px; cursor: pointer; }
+.agent-card:hover { border-color: var(--accent); }
+.agent-card.selected { border-color: var(--accent); background: rgba(0,212,255,.06); }
+.agent-card .agent-name { font-weight: 600; font-size: 14px; }
+.agent-card .agent-role { font-size: 11px; color: var(--fg2); margin-top: 2px; }
+
+/* Data Page */
+#data { flex-direction: column; }
+#data .page-header { padding: 16px 24px; border-bottom: 1px solid var(--border);
+                     display: flex; justify-content: space-between; align-items: center; }
+#data .page-body { flex: 1; padding: 20px; overflow-y: auto; }
+.data-section { margin-bottom: 24px; }
+.data-section h3 { font-size: 15px; margin-bottom: 12px; color: var(--accent); }
+.recording-row { display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--card);
+                 border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
+.playback-bar { background: var(--bg2); border-radius: 6px; height: 6px; flex: 1; overflow: hidden; }
+.playback-fill { height: 100%; background: var(--accent); border-radius: 6px; transition: width .3s; }
+
+/* Settings Page */
+#settings { flex-direction: column; }
+#settings .page-header { padding: 16px 24px; border-bottom: 1px solid var(--border); }
+#settings .page-body { flex: 1; padding: 24px; overflow-y: auto; max-width: 700px; }
+.setting-group { margin-bottom: 24px; }
+.setting-group h3 { font-size: 15px; margin-bottom: 12px; color: var(--accent); }
+.setting-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0;
+               border-bottom: 1px solid var(--border); font-size: 13px; }
+
+/* Toast */
+.toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+.toast { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px;
+         font-size: 13px; animation: slideIn .3s; min-width: 250px; }
+.toast.success { border-left: 3px solid var(--green); }
+.toast.error { border-left: 3px solid var(--red); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+@media (max-width: 900px) {
+    :root { --sidebar-w: 180px; --inspector-w: 240px; }
+}
+</style>
+</head>
+<body>
+
+<div class="toast-container" id="toasts"></div>
+
+<!-- PAGE 1: Welcome -->
+<div class="page active" id="welcome">
+    <div class="logo">Fusion-Simulation</div>
+    <div class="version">v0.1.1 — Apple Silicon Native Simulation Platform</div>
+    <div class="env-check" id="envCheck">
+        <div class="env-item"><div class="env-dot" id="chkPyBullet"></div><span>PyBullet Physics</span></div>
+        <div class="env-item"><div class="env-dot" id="chkGrpc"></div><span>gRPC Service</span></div>
+        <div class="env-item"><div class="env-dot" id="chkMlx"></div><span>Fusion-MLX Inference</span></div>
+        <div class="env-item"><div class="env-dot" id="chkService"></div><span>Simulation Service</span></div>
+    </div>
+    <div class="actions">
+        <button class="btn-primary" onclick="navigateTo('workstation')">&#9654; New Simulation</button>
+        <button class="btn-secondary" onclick="navigateTo('workstation');loadScene('default')">Load Default Scene</button>
+    </div>
+    <div class="recent-projects">
+        <h4>Quick Templates</h4>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+            <button class="btn-secondary" onclick="navigateTo('workstation');loadScene('multi_agent')">Multi-Agent</button>
+            <button class="btn-secondary" onclick="navigateTo('workstation');loadScene('robot_sim')">Robot Sim</button>
+            <button class="btn-secondary" onclick="navigateTo('workstation');loadScene('empty')">Empty Scene</button>
+        </div>
+    </div>
+</div>
+
+<!-- PAGE 2: Simulation Workstation -->
+<div class="page" id="workstation">
+    <div class="top-row">
+        <div class="sidebar">
+            <div class="section-title">Navigation</div>
+            <div class="nav-item active" onclick="navigateTo('workstation')">&#9678; Workstation</div>
+            <div class="nav-item" onclick="navigateTo('agents')">&#9881; Agent Orchestration</div>
+            <div class="nav-item" onclick="navigateTo('data')">&#9656; Data & Recording</div>
+            <div class="nav-item" onclick="navigateTo('settings')">&#9881; Settings</div>
+            <div class="section-title" style="margin-top:12px">Scene Resources</div>
+            <div id="sceneTree"><div class="entity-item" style="color:var(--fg2)">No scene loaded</div></div>
+            <div class="section-title" style="margin-top:12px">Agents</div>
+            <div id="agentTree"><div class="entity-item" style="color:var(--fg2)">No agents</div></div>
+        </div>
+        <div class="main-area">
+            <div class="viewport" id="viewport">
+                <div class="placeholder" id="viewportPlaceholder">
+                    <div style="font-size:48px;margin-bottom:12px">&#9654;</div>
+                    <div>Simulation Viewport</div>
+                    <div style="font-size:12px;margin-top:4px">Init simulation to begin</div>
+                </div>
+                <canvas id="simCanvas" style="display:none"></canvas>
+                <div class="overlay" id="viewportOverlay" style="display:none">
+                    <button class="btn-secondary" style="font-size:11px;padding:4px 8px" onclick="toggleOverlay('agents')">Agents</button>
+                    <button class="btn-secondary" style="font-size:11px;padding:4px 8px" onclick="toggleOverlay('sensors')">Sensors</button>
+                    <button class="btn-secondary" style="font-size:11px;padding:4px 8px" onclick="toggleOverlay('traj')">Trajectory</button>
+                </div>
+            </div>
+            <div class="transport">
+                <button onclick="simInit()" title="Init">&#9211;</button>
+                <button onclick="simResume()" id="btnPlay" title="Play">&#9654;</button>
+                <button onclick="simPause()" id="btnPause" title="Pause">&#9208;</button>
+                <button onclick="simStop()" title="Stop">&#9724;</button>
+                <button onclick="simStep()" title="Step">&#9197;</button>
+                <div class="speed-control">
+                    <span>Speed</span>
+                    <input type="number" id="speedMult" value="1.0" min="0.1" max="10" step="0.1" style="width:55px">
+                    <span>x</span>
+                </div>
+                <div style="margin-left:auto;font-size:12px;color:var(--fg2)">
+                    Steps: <span id="stepCount">0</span> | Sim Time: <span id="simTimeVal">0.000</span>s
+                </div>
+            </div>
+        </div>
+        <div class="inspector">
+            <div class="tab-bar">
+                <div class="tab active" onclick="switchInspectorTab('props',this)">Properties</div>
+                <div class="tab" onclick="switchInspectorTab('ai',this)">AI Policy</div>
+                <div class="tab" onclick="switchInspectorTab('monitor',this)">Monitor</div>
+            </div>
+            <div class="tab-content" id="inspectorProps">
+                <div class="prop-row"><span class="label">Kernel State</span><span class="value" id="propKernelState">—</span></div>
+                <div class="prop-row"><span class="label">Frame Count</span><span class="value" id="propFrameCount">0</span></div>
+                <div class="prop-row"><span class="label">Sim Time</span><span class="value" id="propSimTime">0.000s</span></div>
+                <div class="prop-row"><span class="label">Physics dt</span><span class="value">0.01s</span></div>
+                <div class="prop-row"><span class="label">Render dt</span><span class="value">0.033s</span></div>
+                <div class="prop-row"><span class="label">Sensors</span><span class="value" id="propSensorCount">0</span></div>
+                <div class="prop-row"><span class="label">Agents</span><span class="value" id="propAgentCount">0</span></div>
+                <div style="margin-top:16px">
+                    <button class="btn-secondary" onclick="addSensorDialog()">+ Add Sensor</button>
+                    <button class="btn-secondary" style="margin-left:8px" onclick="addAgentDialog()">+ Add Agent</button>
+                </div>
+            </div>
+            <div class="tab-content" id="inspectorAi" style="display:none">
+                <div class="prop-row"><span class="label">Default Model</span><span class="value">qwen3.5-9b</span></div>
+                <div class="prop-row"><span class="label">MLX Endpoint</span><span class="value">:11434</span></div>
+                <div class="prop-row"><span class="label">Inference Mode</span><span class="value">vision+action</span></div>
+                <div style="margin-top:12px;font-size:12px;color:var(--fg2)">
+                    AI policy configuration per-agent is available in the Agent Orchestration page.
+                </div>
+            </div>
+            <div class="tab-content" id="inspectorMonitor" style="display:none">
+                <div class="metric-card"><div class="metric-label">Step Duration</div><div class="metric-value" id="monStepMs">— ms</div></div>
+                <div class="metric-card"><div class="metric-label">Physics Step</div><div class="metric-value" id="monPhysicsMs">— ms</div></div>
+                <div class="metric-card"><div class="metric-label">Sensor Collect</div><div class="metric-value" id="monSensorMs">— ms</div></div>
+                <div class="metric-card"><div class="metric-label">Agent Decide</div><div class="metric-value" id="monAgentMs">— ms</div></div>
+                <div class="metric-card"><div class="metric-label">Render</div><div class="metric-value" id="monRenderMs">— ms</div></div>
+                <div class="metric-card"><div class="metric-label">FPS</div><div class="metric-value" id="monFps">—</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="statusbar">
+        <div style="display:flex;align-items:center;gap:6px"><div class="indicator" id="statusIndicator"></div><span id="statusText">Idle</span></div>
+        <span>Kernel: <span id="sbKernel">—</span></span>
+        <span>FPS: <span id="sbFps">—</span></span>
+        <span>Latency: <span id="sbLatency">—</span></span>
+        <span>Memory: <span id="sbMemory">—</span></span>
+        <span style="margin-left:auto;color:var(--fg2)">Fusion-Simulation v0.1.1</span>
+    </div>
+</div>
+
+<!-- PAGE 3: Agent Orchestration -->
+<div class="page" id="agents">
+    <div class="page-header">
+        <h2 style="font-size:18px">Agent Orchestration</h2>
+        <button class="btn-primary" onclick="addAgentDialog()">+ New Agent</button>
+    </div>
+    <div class="page-body">
+        <div class="agent-list" id="agentListPanel">
+            <div style="color:var(--fg2);font-size:13px;text-align:center;padding:20px">No agents configured.<br>Add one to get started.</div>
+        </div>
+        <div class="agent-detail" id="agentDetailPanel">
+            <h3 style="color:var(--fg2);font-size:14px">Select an agent to view details</h3>
+        </div>
+    </div>
+</div>
+
+<!-- PAGE 4: Data & Recording -->
+<div class="page" id="data">
+    <div class="page-header">
+        <h2 style="font-size:18px">Data & Recording</h2>
+        <div style="display:flex;gap:8px">
+            <button class="btn-secondary" onclick="saveSnapshot()">Save Snapshot</button>
+            <button class="btn-primary" onclick="toast('Recording started','success')">Start Recording</button>
+        </div>
+    </div>
+    <div class="page-body">
+        <div class="data-section">
+            <h3>Snapshots</h3>
+            <div id="snapshotList"><div class="recording-row"><span style="color:var(--fg2)">No snapshots yet</span></div></div>
+        </div>
+        <div class="data-section">
+            <h3>Recordings</h3>
+            <div class="recording-row">
+                <button class="btn-secondary" style="padding:4px 10px;font-size:11px">&#9654;</button>
+                <div style="flex:1"><div>Session 1</div><div class="playback-bar"><div class="playback-fill" style="width:0%"></div></div></div>
+                <span style="color:var(--fg2);font-size:12px">0 frames</span>
+            </div>
+        </div>
+        <div class="data-section">
+            <h3>Export</h3>
+            <div style="display:flex;gap:8px">
+                <button class="btn-secondary">Export COCO</button>
+                <button class="btn-secondary">Export KITTI</button>
+                <button class="btn-secondary">Export JSON</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- PAGE 5: Settings -->
+<div class="page" id="settings">
+    <div class="page-header">
+        <h2 style="font-size:18px">Settings</h2>
+        <button class="btn-primary" onclick="runEnvCheck()">Check Environment</button>
+    </div>
+    <div class="page-body">
+        <div class="setting-group">
+            <h3>Simulation Kernel</h3>
+            <div class="setting-row"><span>Physics Step (dt)</span><input type="number" value="0.01" step="0.001" style="width:80px"></div>
+            <div class="setting-row"><span>Render FPS</span><input type="number" value="30" style="width:80px"></div>
+            <div class="setting-row"><span>Solver Iterations</span><input type="number" value="10" style="width:80px"></div>
+            <div class="setting-row"><span>Max Agents</span><input type="number" value="10" style="width:80px"></div>
+        </div>
+        <div class="setting-group">
+            <h3>AI Inference</h3>
+            <div class="setting-row"><span>MLX Endpoint</span><input type="text" value="http://localhost:11434/v1" style="width:250px"></div>
+            <div class="setting-row"><span>Default Model</span><input type="text" value="qwen3.5-9b" style="width:150px"></div>
+            <div class="setting-row"><span>Inference Precision</span><select><option>FP16</option><option>INT4</option><option>INT8</option></select></div>
+        </div>
+        <div class="setting-group">
+            <h3>Service Configuration</h3>
+            <div class="setting-row"><span>gRPC Port</span><input type="number" value="50051" style="width:80px"></div>
+            <div class="setting-row"><span>Metrics Port</span><input type="number" value="8081" style="width:80px"></div>
+            <div class="setting-row"><span>Gateway URL</span><input type="text" value="" placeholder="http://localhost:11432" style="width:250px"></div>
+        </div>
+        <div class="setting-group">
+            <h3>Appearance</h3>
+            <div class="setting-row"><span>Theme</span><select><option>Dark (Default)</option><option>Light</option></select></div>
+        </div>
+    </div>
+</div>
+
+<script>
+let ws = null;
+let simState = { initialized: false, running: false, paused: false };
+let agents = [];
+let snapshots = [];
+let autoStepInterval = null;
+
+function navigateTo(page) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById(page).classList.add('active');
+    if (page === 'welcome') runEnvCheck();
+}
+
+function toast(msg, type) {
+    type = type || 'success';
+    var el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    document.getElementById('toasts').appendChild(el);
+    setTimeout(function() { el.remove(); }, 3000);
+}
+
+async function api(method, params) {
+    params = params || {};
+    try {
+        var url = method.startsWith('/') ? method : '/api/' + method;
+        if (method === 'health' || method === 'status' || method === 'observations' || method === 'metrics' || method === 'env_check') {
+            var resp = await fetch('/api/' + method);
+            return await resp.json();
+        }
+        var resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params),
+        });
+        return await resp.json();
+    } catch (e) {
+        toast('API error: ' + e.message, 'error');
+        return { error: e.message };
+    }
+}
+
+async function runEnvCheck() {
+    try {
+        var data = await api('env_check');
+        setDot('chkPyBullet', data.pybullet && data.pybullet.available);
+        setDot('chkGrpc', data.grpc && data.grpc.available);
+        setDot('chkMlx', data.fusion_mlx && data.fusion_mlx.available);
+        setDot('chkService', data.simulation_service && data.simulation_service.available);
+    } catch (e) {
+        ['chkPyBullet','chkGrpc','chkMlx','chkService'].forEach(function(id) { setDot(id, false); });
+    }
+}
+
+function setDot(id, ok) {
+    var el = document.getElementById(id);
+    if (el) { el.className = 'env-dot ' + (ok ? 'ok' : 'fail'); }
+}
+
+async function simInit() {
+    var r = await api('init', {});
+    if (r.error) { toast(r.error, 'error'); return; }
+    toast('Simulation initialized');
+    simState.initialized = true;
+    updateStatus(r);
+    document.getElementById('viewportPlaceholder').style.display = 'none';
+    document.getElementById('simCanvas').style.display = 'block';
+    document.getElementById('viewportOverlay').style.display = 'flex';
+}
+
+async function simResume() {
+    if (!simState.initialized) { toast('Init simulation first', 'error'); return; }
+    var r = await api('resume', {});
+    if (r.error) { toast(r.error, 'error'); return; }
+    simState.running = true; simState.paused = false;
+    document.getElementById('btnPlay').classList.add('active');
+    document.getElementById('btnPause').classList.remove('active');
+    toast('Simulation running');
+    startAutoStep();
+}
+
+async function simPause() {
+    var r = await api('pause', {});
+    if (r.error) { toast(r.error, 'error'); return; }
+    simState.paused = true; simState.running = false;
+    document.getElementById('btnPause').classList.add('active');
+    document.getElementById('btnPlay').classList.remove('active');
+    toast('Simulation paused');
+    stopAutoStep();
+}
+
+async function simStop() {
+    stopAutoStep();
+    simState.running = false; simState.paused = false;
+    document.getElementById('btnPlay').classList.remove('active');
+    document.getElementById('btnPause').classList.remove('active');
+    toast('Simulation stopped');
+}
+
+async function simStep() {
+    if (!simState.initialized) { await simInit(); }
+    var r = await api('step', { num_steps: 1 });
+    if (r.error) { toast(r.error, 'error'); return; }
+    updateMetrics(r);
+}
+
+async function loadScene(name) {
+    if (!simState.initialized) { await simInit(); }
+    var r = await api('load_scene', { name: name });
+    if (r.error) { toast(r.error, 'error'); return; }
+    toast('Scene loaded: ' + name);
+    updateSceneTree([{ name: name, type: 'scene' }]);
+}
+
+function startAutoStep() {
+    stopAutoStep();
+    var speed = parseFloat(document.getElementById('speedMult').value) || 1.0;
+    var interval = Math.max(16, Math.round(33 / speed));
+    autoStepInterval = setInterval(async function() {
+        var r = await api('step', { num_steps: 1 });
+        if (r.error) { stopAutoStep(); return; }
+        updateMetrics(r);
+    }, interval);
+}
+
+function stopAutoStep() {
+    if (autoStepInterval) { clearInterval(autoStepInterval); autoStepInterval = null; }
+}
+
+function updateStatus(data) {
+    var state = data.state || data.kernel_state || '—';
+    document.getElementById('propKernelState').textContent = state;
+    document.getElementById('sbKernel').textContent = state;
+    document.getElementById('statusText').textContent = state;
+    var ind = document.getElementById('statusIndicator');
+    ind.className = 'indicator ' + (state === 'RUNNING' ? 'ok' : state === 'PAUSED' ? 'warn' : 'err');
+}
+
+function updateMetrics(data) {
+    if (data.sim_time !== undefined) {
+        document.getElementById('simTimeVal').textContent = data.sim_time.toFixed(3);
+        document.getElementById('propSimTime').textContent = data.sim_time.toFixed(3) + 's';
+    }
+    if (data.frame_count !== undefined) {
+        document.getElementById('stepCount').textContent = data.frame_count;
+        document.getElementById('propFrameCount').textContent = data.frame_count;
+    }
+    if (data.total_ms !== undefined) {
+        document.getElementById('monStepMs').textContent = data.total_ms.toFixed(1) + ' ms';
+        document.getElementById('sbLatency').textContent = data.total_ms.toFixed(1) + 'ms';
+        var fps = data.total_ms > 0 ? (1000 / data.total_ms).toFixed(0) : '—';
+        document.getElementById('monFps').textContent = fps;
+        document.getElementById('sbFps').textContent = fps;
+    }
+    if (data.physics_step_ms !== undefined) document.getElementById('monPhysicsMs').textContent = data.physics_step_ms.toFixed(2) + ' ms';
+    if (data.sensor_collect_ms !== undefined) document.getElementById('monSensorMs').textContent = data.sensor_collect_ms.toFixed(2) + ' ms';
+    if (data.agent_decide_ms !== undefined) document.getElementById('monAgentMs').textContent = data.agent_decide_ms.toFixed(2) + ' ms';
+    if (data.render_ms !== undefined) document.getElementById('monRenderMs').textContent = data.render_ms.toFixed(2) + ' ms';
+}
+
+function switchInspectorTab(tab, el) {
+    document.querySelectorAll('.inspector .tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.inspector .tab-content').forEach(function(c) { c.style.display = 'none'; });
+    var tabMap = { props: 'inspectorProps', ai: 'inspectorAi', monitor: 'inspectorMonitor' };
+    el.classList.add('active');
+    document.getElementById(tabMap[tab]).style.display = 'block';
+}
+
+function updateSceneTree(items) {
+    var el = document.getElementById('sceneTree');
+    el.innerHTML = items.map(function(i) {
+        return '<div class="entity-item">&#9670; ' + i.name + ' <span style="color:var(--fg2)">(' + i.type + ')</span></div>';
+    }).join('');
+}
+
+async function addSensorDialog() {
+    var name = prompt('Sensor name:', 'cam0');
+    if (!name) return;
+    var type = prompt('Sensor type (rgb_camera, depth_camera, imu):', 'rgb_camera');
+    var r = await api('add_sensor', { type: type, name: name });
+    if (r.error) { toast(r.error, 'error'); return; }
+    toast('Sensor added: ' + name);
+    var cur = parseInt(document.getElementById('propSensorCount').textContent || '0');
+    document.getElementById('propSensorCount').textContent = cur + 1;
+}
+
+async function addAgentDialog() {
+    var name = prompt('Agent name:', 'agent' + agents.length);
+    if (!name) return;
+    var role = prompt('Role (robot, observer, controller):', 'robot');
+    var dim = prompt('Action dimension:', '6');
+    var r = await api('add_agent', { name: name, role: role, action_dim: parseInt(dim) || 6 });
+    if (r.error) { toast(r.error, 'error'); return; }
+    agents.push({ name: name, role: role, action_dim: parseInt(dim) || 6 });
+    toast('Agent added: ' + name);
+    document.getElementById('propAgentCount').textContent = agents.length;
+    refreshAgentUI();
+}
+
+function refreshAgentUI() {
+    var tree = document.getElementById('agentTree');
+    tree.innerHTML = agents.length ? agents.map(function(a) {
+        return '<div class="entity-item" onclick="selectAgent(\'' + a.name + '\')">&#9881; ' + a.name + ' (' + a.role + ')</div>';
+    }).join('') : '<div class="entity-item" style="color:var(--fg2)">No agents</div>';
+
+    var panel = document.getElementById('agentListPanel');
+    panel.innerHTML = agents.length ? agents.map(function(a) {
+        return '<div class="agent-card ' + (a._selected ? 'selected' : '') + '" onclick="selectAgent(\'' + a.name + '\')">' +
+            '<div class="agent-name">' + a.name + '</div>' +
+            '<div class="agent-role">' + a.role + ' | dim=' + a.action_dim + '</div></div>';
+    }).join('') : '<div style="color:var(--fg2);font-size:13px;text-align:center;padding:20px">No agents configured.</div>';
+}
+
+function selectAgent(name) {
+    agents.forEach(function(a) { a._selected = (a.name === name); });
+    var agent = agents.find(function(a) { return a.name === name; });
+    if (!agent) return;
+    var detail = document.getElementById('agentDetailPanel');
+    detail.innerHTML = '<h3 style="margin-bottom:12px">' + agent.name + '</h3>' +
+        '<div class="prop-row"><span class="label">Role</span><span class="value">' + agent.role + '</span></div>' +
+        '<div class="prop-row"><span class="label">Action Dim</span><span class="value">' + agent.action_dim + '</span></div>' +
+        '<div class="prop-row"><span class="label">Model</span><span class="value">qwen3.5-9b</span></div>' +
+        '<div class="prop-row"><span class="label">Policy</span><span class="value">MLX Vision+Action</span></div>' +
+        '<div style="margin-top:16px"><h4 style="font-size:13px;margin-bottom:8px">Prompt Configuration</h4>' +
+        '<textarea style="width:100%;height:120px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px" placeholder="Enter agent prompt/instructions..."></textarea></div>' +
+        '<div style="margin-top:12px;display:flex;gap:8px">' +
+        '<button class="btn-primary" onclick="toast(\'Agent config saved\',\'success\')">Save Config</button>' +
+        '<button class="btn-secondary" onclick="removeAgent(\'' + agent.name + '\')">Remove Agent</button></div>';
+    refreshAgentUI();
+}
+
+function removeAgent(name) {
+    agents = agents.filter(function(a) { return a.name !== name; });
+    document.getElementById('propAgentCount').textContent = agents.length;
+    document.getElementById('agentDetailPanel').innerHTML = '<h3 style="color:var(--fg2);font-size:14px">Agent removed</h3>';
+    refreshAgentUI();
+}
+
+async function saveSnapshot() {
+    var name = prompt('Snapshot name:', 'snap_' + Date.now());
+    if (!name) return;
+    var r = await api('save_snapshot', { name: name });
+    if (r.error) { toast(r.error, 'error'); return; }
+    snapshots.push({ name: name, id: r.snapshot_id || name });
+    toast('Snapshot saved: ' + name);
+    refreshSnapshots();
+}
+
+function refreshSnapshots() {
+    var el = document.getElementById('snapshotList');
+    el.innerHTML = snapshots.length ? snapshots.map(function(s) {
+        return '<div class="recording-row"><span>' + s.name + '</span>' +
+            '<button class="btn-secondary" style="padding:2px 8px;font-size:11px;margin-left:auto" onclick="restoreSnapshot(\'' + s.id + '\')">Restore</button></div>';
+    }).join('') : '<div class="recording-row"><span style="color:var(--fg2)">No snapshots yet</span></div>';
+}
+
+async function restoreSnapshot(id) {
+    var r = await api('restore_snapshot', { snapshot_id: id });
+    if (r.error) { toast(r.error, 'error'); return; }
+    toast('Snapshot restored');
+}
+
+function toggleOverlay(type) { toast('Toggle overlay: ' + type); }
+
+function connectWS() {
+    var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(proto + '://' + location.host + '/ws/events');
+    ws.onmessage = function(e) {
+        try {
+            var data = JSON.parse(e.data);
+            if (data.type === 'event') {
+                updateStatus({ state: data.kind, sim_time: data.sim_time });
+            } else {
+                updateMetrics(data);
+                updateStatus(data);
+            }
+        } catch (err) {}
+    };
+    ws.onclose = function() { setTimeout(connectWS, 3000); };
+    ws.onerror = function() {};
+}
+
+function initCanvas() {
+    var canvas = document.getElementById('simCanvas');
+    var ctx = canvas.getContext('2d');
+    var t = 0;
+    function draw() {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+        ctx.fillStyle = '#0a0a1a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#1a2a4a';
+        ctx.lineWidth = 0.5;
+        for (var x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+        for (var y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+        if (simState.initialized) {
+            t += 0.02;
+            agents.forEach(function(a, i) {
+                var cx = canvas.width / 2 + Math.cos(t + i * 1.5) * 100;
+                var cy = canvas.height / 2 + Math.sin(t + i * 1.5) * 80;
+                ctx.fillStyle = '#00d4ff';
+                ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#e0e0e0';
+                ctx.font = '10px sans-serif';
+                ctx.fillText(a.name, cx - 15, cy + 22);
+            });
+        }
+        requestAnimationFrame(draw);
+    }
+    draw();
+}
+
+window.addEventListener('load', function() {
+    runEnvCheck();
+    connectWS();
+    initCanvas();
+    refreshAgentUI();
+    refreshSnapshots();
+    setInterval(async function() {
+        var r = await api('status');
+        if (!r.error) updateStatus(r);
+    }, 2000);
+});
+</script>
+</body>
+</html>

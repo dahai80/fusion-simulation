@@ -108,6 +108,8 @@ def main():
     svc_start.add_argument("--metrics-port", type=int, default=8081)
     svc_start.add_argument("--headless", action="store_true")
     svc_start.add_argument("--gateway-url", default="", help="Fusion-Gateway URL")
+    svc_start.add_argument("--gui", action="store_true", help="Enable Web Dashboard GUI")
+    svc_start.add_argument("--gui-port", type=int, default=8080, help="Dashboard port (default: 8080)")
     svc_sub.add_parser("stop", help="Stop simulation server")
     svc_health = svc_sub.add_parser("health", help="Check service health")
     svc_health.add_argument("--url", default="http://127.0.0.1:8081", help="Metrics URL")
@@ -414,11 +416,18 @@ def _cmd_service_start(args):
     server.start()
     logger.info("SimulationServer started on %s:%d (metrics on :%d)", args.host, args.port, args.metrics_port)
     print(f"SimulationServer started on {args.host}:{args.port} (metrics on :{args.metrics_port})")
-    try:
-        server.wait_for_termination()
-    except KeyboardInterrupt:
-        server.stop()
-        print("Server stopped")
+    if args.gui:
+        from fusion_simulation.gui import GUIConfig
+        from fusion_simulation.gui.app import run_dashboard
+        gui_config = GUIConfig(port=args.gui_port, grpc_host=args.host, grpc_port=args.port)
+        print(f"Web Dashboard: http://0.0.0.0:{args.gui_port}")
+        run_dashboard(server, gui_config)
+    else:
+        try:
+            server.wait_for_termination()
+        except KeyboardInterrupt:
+            server.stop()
+            print("Server stopped")
 
 
 def _cmd_service_health(args):
