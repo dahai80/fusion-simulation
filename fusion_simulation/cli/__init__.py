@@ -165,7 +165,7 @@ def main():
 
 
 def _cmd_version():
-    print("Fusion-Simulation v0.1.0")
+    print("Fusion-Simulation v0.1.1")
     print("Core: SimulationKernel + ECS + EventBus + SimClock")
     print("Physics: PyBullet (V0.1) | SceneKit (V0.2) | Metal (V0.3)")
     print("Sensors: RGB Camera + IMU")

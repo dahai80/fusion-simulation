@@ -1,3 +1,5 @@
+__version__ = "0.1.1"
+
 from .agent import AgentConfig, AgentManager, AgentRole, PolicyClient
 from .core.clock import SimClock, SimTime
 from .core.ecs import Component, EntityId, EntityManager
