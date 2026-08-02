@@ -58,8 +58,12 @@ class SimulationEnv:
             am = AgentManager()
             self._kernel = SimulationKernel(kernel_config)
             self._kernel.init(sensor_manager=sm, agent_manager=am)
-            logger.info("SimulationEnv initialized: engine=%s scene=%s fps=%d",
-                        self.config.engine.value, self.config.scene, self.config.render_fps)
+            logger.info(
+                "SimulationEnv initialized: engine=%s scene=%s fps=%d",
+                self.config.engine.value,
+                self.config.scene,
+                self.config.render_fps,
+            )
             return {"status": "initialized", "engine": self.config.engine.value}
         except Exception as e:
             logger.error("Failed to initialize simulation: %s", e)

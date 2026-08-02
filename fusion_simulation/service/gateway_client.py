@@ -110,7 +110,9 @@ class GatewayClient:
         headers = self._build_headers()
         try:
             resp = self._client.post(
-                url, json=self._payload_to_dict(payload), headers=headers,
+                url,
+                json=self._payload_to_dict(payload),
+                headers=headers,
             )
             if resp.status_code in (200, 201):
                 self._registered = True
@@ -190,7 +192,8 @@ class GatewayClient:
             return
         self._stop_event.clear()
         self._heartbeat_thread = threading.Thread(
-            target=self._heartbeat_loop, daemon=True,
+            target=self._heartbeat_loop,
+            daemon=True,
         )
         self._heartbeat_thread.start()
 

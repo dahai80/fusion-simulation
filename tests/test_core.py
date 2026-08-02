@@ -1,4 +1,5 @@
 """Tests for Fusion-Simulation core modules."""
+
 from __future__ import annotations
 
 import json
@@ -8,13 +9,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from fusion_simulation.sim.env import SimulationEnv, EnvConfig, EngineType, SimulationState
-from fusion_simulation.train.trainer import BCTrainer
-from fusion_simulation.eval.evaluator import SimulationEvaluator, EvalResult
 from fusion_simulation.dataset.manager import DatasetManager
-
+from fusion_simulation.eval.evaluator import EvalResult, SimulationEvaluator
+from fusion_simulation.sim.env import (
+    EngineType,
+    EnvConfig,
+    SimulationEnv,
+    SimulationState,
+)
+from fusion_simulation.train.trainer import BCTrainer
 
 # ── EnvConfig ──
+
 
 class TestEnvConfig:
     def test_defaults(self):
@@ -30,6 +36,7 @@ class TestEnvConfig:
 
 # ── SimulationState ──
 
+
 class TestSimulationState:
     def test_defaults(self):
         s = SimulationState()
@@ -39,6 +46,7 @@ class TestSimulationState:
 
 
 # ── SimulationEnv ──
+
 
 class TestSimulationEnv:
     def test_init_no_pybullet(self):
@@ -74,15 +82,14 @@ class TestSimulationEnv:
 
 # ── BCTrainer ──
 
+
 class TestBCTrainer:
     @pytest.mark.asyncio
     async def test_train_step(self):
         trainer = BCTrainer()
         with patch("httpx.AsyncClient.post", new=AsyncMock()) as mock_post:
             mock_resp = MagicMock()
-            mock_resp.json.return_value = {
-                "choices": [{"message": {"content": '{"loss": 0.5, "accuracy": 0.3}'}}]
-            }
+            mock_resp.json.return_value = {"choices": [{"message": {"content": '{"loss": 0.5, "accuracy": 0.3}'}}]}
             mock_post.return_value = mock_resp
             result = await trainer.train_step([[1.0, 0.0]], [[0.5, 0.0]], lr=1e-4)
             assert "loss" in result
@@ -127,6 +134,7 @@ class TestBCTrainer:
 
 # ── SimulationEvaluator ──
 
+
 class TestSimulationEvaluator:
     @pytest.mark.asyncio
     async def test_evaluate(self):
@@ -154,6 +162,7 @@ class TestSimulationEvaluator:
 
 
 # ── DatasetManager ──
+
 
 class TestDatasetManager:
     def test_list_empty(self):

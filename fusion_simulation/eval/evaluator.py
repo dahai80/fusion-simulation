@@ -43,7 +43,9 @@ class SimulationEvaluator:
         result.trajectory_error = sum(d.get("trajectory_error", 0) for d in result.details) / max(episodes, 1)
         return result
 
-    async def evaluate_with_kernel(self, kernel: SimulationKernel, agent_name: str = "", episodes: int = 10, max_steps: int = 500) -> EvalResult:
+    async def evaluate_with_kernel(
+        self, kernel: SimulationKernel, agent_name: str = "", episodes: int = 10, max_steps: int = 500
+    ) -> EvalResult:
         result = EvalResult(total_episodes=episodes)
         start = time.time()
         successes = 0
@@ -96,12 +98,15 @@ class SimulationEvaluator:
 
     def generate_report(self, result: EvalResult, fmt: str = "markdown") -> str:
         if fmt == "json":
-            return json.dumps({
-                "task_success_rate": round(result.task_success_rate, 2),
-                "trajectory_error": round(result.trajectory_error, 4),
-                "inference_latency_ms": round(result.inference_latency_ms, 2),
-                "fps": round(result.fps, 1),
-            }, indent=2)
+            return json.dumps(
+                {
+                    "task_success_rate": round(result.task_success_rate, 2),
+                    "trajectory_error": round(result.trajectory_error, 4),
+                    "inference_latency_ms": round(result.inference_latency_ms, 2),
+                    "fps": round(result.fps, 1),
+                },
+                indent=2,
+            )
         return (
             f"## Simulation Evaluation Report\n\n"
             f"| Metric | Value |\n"

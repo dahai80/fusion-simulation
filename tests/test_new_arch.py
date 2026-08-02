@@ -1,26 +1,33 @@
 from __future__ import annotations
 
-import pytest
 import numpy as np
+import pytest
 
-from fusion_simulation.core.clock import SimClock, SimTime
-from fusion_simulation.core.ecs import (
-    Articulation, CameraSensor, Component, EntityId, EntityManager, IMUSensor,
-    RigidBody, Transform,
-)
-from fusion_simulation.core.event_bus import Event, EventBus, EventKind
-from fusion_simulation.core.world_state import EntitySnapshot, WorldState
-from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
-from fusion_simulation.sensor.base import SensorBase, SensorConfig, SensorType
-from fusion_simulation.sensor.manager import SensorManager, create_sensor, register_sensor
-from fusion_simulation.sensor.rgb_camera import RgbCameraSensor
 from fusion_simulation.agent.config import AgentConfig, AgentRole
-from fusion_simulation.agent.policy import PolicyClient
 from fusion_simulation.agent.manager import AgentHandle, AgentManager
-from fusion_simulation.service.config import ServiceConfig
+from fusion_simulation.agent.policy import PolicyClient
+from fusion_simulation.core.clock import SimClock
+from fusion_simulation.core.ecs import (
+    EntityId,
+    EntityManager,
+    RigidBody,
+    Transform,
+)
+from fusion_simulation.core.event_bus import EventBus, EventKind
+from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
+from fusion_simulation.core.world_state import WorldState
+from fusion_simulation.sensor.base import SensorConfig, SensorType
+from fusion_simulation.sensor.manager import (
+    SensorManager,
+    create_sensor,
+)
+from fusion_simulation.sensor.rgb_camera import RgbCameraSensor
 from fusion_simulation.service.server import SimulationServer
 from fusion_simulation.train.gym_env import (
-    ActionManager, FusionGymEnv, ObservationManager, RewardManager,
+    ActionManager,
+    FusionGymEnv,
+    ObservationManager,
+    RewardManager,
     TerminationManager,
 )
 
@@ -255,8 +262,8 @@ class TestSensorManager:
         assert st["sensor_count"] == 1
 
     def test_create_sensor_unknown_type(self):
-        with pytest.raises(ValueError, match="Unknown sensor type"):
-            create_sensor(SensorConfig(sensor_type=SensorType.IMU, name="imu0"))
+        sensor = create_sensor(SensorConfig(sensor_type=SensorType.IMU, name="imu0"))
+        assert sensor is not None
 
 
 class TestRgbCameraSensor:

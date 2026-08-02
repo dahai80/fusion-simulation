@@ -196,6 +196,7 @@ def _cmd_scene_dispatch(args):
 def _cmd_agent_dispatch(args):
     if args.action == "spawn":
         from fusion_simulation.agent.config import AgentConfig, AgentRole
+
         role_map = {"robot": AgentRole.ROBOT, "observer": AgentRole.OBSERVER, "controller": AgentRole.CONTROLLER}
         cfg = AgentConfig(
             name=args.name,
@@ -238,6 +239,7 @@ def _cmd_snapshot_dispatch(args):
 
 def _cmd_dataset_dispatch(args):
     from fusion_simulation.dataset.manager import DatasetManager
+
     mgr = DatasetManager()
     if args.action == "list":
         datasets = mgr.list()
@@ -268,6 +270,7 @@ def _cmd_gateway_dispatch(args):
             GatewayClient,
             GatewayConfig,
         )
+
         cfg = GatewayConfig(
             gateway_url=args.gateway_url,
             service_port=args.service_port,
@@ -288,6 +291,7 @@ def _cmd_kernel_dispatch(args):
     from fusion_simulation.agent.manager import AgentManager
     from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
     from fusion_simulation.sensor.manager import SensorManager
+
     if args.action == "run":
         sm = SensorManager()
         am = AgentManager()
@@ -307,6 +311,7 @@ def _cmd_env_init(args):
     from fusion_simulation.agent.manager import AgentManager
     from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
     from fusion_simulation.sensor.manager import SensorManager
+
     config = KernelConfig(
         physics_dt=args.physics_dt,
         render_dt=args.render_dt,
@@ -322,6 +327,7 @@ def _cmd_env_init(args):
 
 def _cmd_scene_list():
     from fusion_simulation.sim.env import SimulationEnv
+
     scenes = SimulationEnv.list_scenes()
     print(f"\n{'Scene':<20} {'Description'}")
     print("-" * 60)
@@ -333,6 +339,7 @@ def _cmd_scene_load(args):
     from fusion_simulation.agent.manager import AgentManager
     from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
     from fusion_simulation.sensor.manager import SensorManager
+
     sm = SensorManager()
     am = AgentManager()
     kernel = SimulationKernel(KernelConfig(headless=True))
@@ -360,6 +367,7 @@ async def _cmd_train(args):
         from fusion_simulation.agent.manager import AgentManager
         from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
         from fusion_simulation.sensor.manager import SensorManager
+
         sm = SensorManager()
         am = AgentManager()
         kernel = SimulationKernel(KernelConfig(headless=True))
@@ -379,6 +387,7 @@ async def _cmd_train(args):
 
 async def _cmd_test(args):
     from fusion_simulation.eval.evaluator import SimulationEvaluator
+
     evaluator = SimulationEvaluator()
     print(f"Testing model '{args.model}' on {args.engine} ({args.episodes} episodes)...")
     result = await evaluator.evaluate(args.model, args.engine, args.episodes)
@@ -387,6 +396,7 @@ async def _cmd_test(args):
 
 async def _cmd_bench(args):
     from fusion_simulation.eval.evaluator import SimulationEvaluator
+
     evaluator = SimulationEvaluator()
     result = await evaluator.evaluate(args.model, episodes=10)
     report = evaluator.generate_report(result, fmt="json" if args.output.endswith(".json") else "markdown")
@@ -403,14 +413,17 @@ def _cmd_service_start(args):
     from fusion_simulation.service.gateway_client import GatewayConfig
     from fusion_simulation.service.metrics_server import MetricsConfig
     from fusion_simulation.service.server import SimulationServer
+
     svc_config = ServiceConfig(host=args.host, port=args.port)
     kernel_config = KernelConfig(headless=args.headless)
     metrics_config = MetricsConfig(port=args.metrics_port)
     gateway_config = None
     if args.gateway_url:
         gateway_config = GatewayConfig(
-            gateway_url=args.gateway_url, enabled=True,
-            service_port=args.port, metrics_port=args.metrics_port,
+            gateway_url=args.gateway_url,
+            enabled=True,
+            service_port=args.port,
+            metrics_port=args.metrics_port,
         )
     server = SimulationServer(svc_config, kernel_config, gateway_config, metrics_config)
     server.start()
@@ -419,6 +432,7 @@ def _cmd_service_start(args):
     if args.gui:
         from fusion_simulation.gui import GUIConfig
         from fusion_simulation.gui.app import run_dashboard
+
         gui_config = GUIConfig(port=args.gui_port, grpc_host=args.host, grpc_port=args.port)
         print(f"Web Dashboard: http://0.0.0.0:{args.gui_port}")
         run_dashboard(server, gui_config)
@@ -432,6 +446,7 @@ def _cmd_service_start(args):
 
 def _cmd_service_health(args):
     import httpx
+
     try:
         resp = httpx.get(f"{args.url}/health", timeout=5.0)
         if resp.status_code == 200:

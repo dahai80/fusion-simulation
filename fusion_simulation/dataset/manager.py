@@ -61,6 +61,7 @@ class DatasetManager:
         if name not in self._datasets:
             return False
         import shutil
+
         dst = Path(self._datasets[name]["storage_path"])
         if dst.exists():
             shutil.rmtree(dst)
@@ -77,20 +78,22 @@ class DatasetManager:
     def collect_samples(self, name: str, num_samples: int = 100) -> list[dict[str, Any]]:
         """Generate synthetic samples for training."""
         import numpy as np
+
         samples = []
         for i in range(num_samples):
-            samples.append({
-                "observation": [float(x) for x in np.random.random(64)],
-                "action": [float(x) for x in np.random.random(8)],
-                "reward": float(np.random.random()),
-            })
+            samples.append(
+                {
+                    "observation": [float(x) for x in np.random.random(64)],
+                    "action": [float(x) for x in np.random.random(8)],
+                    "reward": float(np.random.random()),
+                }
+            )
         if name in self._datasets:
             samples_dir = Path(self._datasets[name]["storage_path"]) / "samples"
             samples_dir.mkdir(parents=True, exist_ok=True)
             import json
-            (samples_dir / "samples.json").write_text(
-                json.dumps(samples, indent=2), encoding="utf-8"
-            )
+
+            (samples_dir / "samples.json").write_text(json.dumps(samples, indent=2), encoding="utf-8")
         return samples
 
     @staticmethod

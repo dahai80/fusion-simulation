@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import json
 import threading
 import time
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 
 from fusion_simulation.agent.config import AgentConfig, AgentRole
 from fusion_simulation.agent.manager import AgentManager
-from fusion_simulation.core.clock import SimClock
 from fusion_simulation.core.ecs import EntityManager, RigidBody, Transform
 from fusion_simulation.core.event_bus import EventBus, EventKind
 from fusion_simulation.core.kernel import KernelConfig, KernelState, SimulationKernel
@@ -148,8 +145,11 @@ class TestKernelLifecycleE2E:
 class TestSimulationServerRPCE2E:
     def test_rpc_init_step_status_close(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             resp = srv.handle_request("init", {})
             assert resp.get("status") == "initialized"
@@ -166,13 +166,20 @@ class TestSimulationServerRPCE2E:
 
     def test_rpc_add_sensor_and_get_observations(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv.handle_request("init", {})
-            resp = srv.handle_request("add_sensor", {
-                "type": "rgb_camera", "name": "cam0",
-            })
+            resp = srv.handle_request(
+                "add_sensor",
+                {
+                    "type": "rgb_camera",
+                    "name": "cam0",
+                },
+            )
             assert resp.get("status") == "added"
 
             resp = srv.handle_request("get_observations", {})
@@ -182,13 +189,21 @@ class TestSimulationServerRPCE2E:
 
     def test_rpc_add_agent(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv.handle_request("init", {})
-            resp = srv.handle_request("add_agent", {
-                "name": "robot0", "role": "robot", "action_dim": 6,
-            })
+            resp = srv.handle_request(
+                "add_agent",
+                {
+                    "name": "robot0",
+                    "role": "robot",
+                    "action_dim": 6,
+                },
+            )
             assert resp.get("status") == "added"
 
             resp = srv.handle_request("step", {"num_steps": 1})
@@ -198,8 +213,11 @@ class TestSimulationServerRPCE2E:
 
     def test_rpc_load_scene(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv.handle_request("init", {})
             resp = srv.handle_request("load_scene", {"name": "default"})
@@ -208,24 +226,33 @@ class TestSimulationServerRPCE2E:
 
     def test_rpc_snapshot_save_restore(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv.handle_request("init", {})
             srv.handle_request("step", {"num_steps": 5})
             resp = srv.handle_request("save_snapshot", {"name": "snap1"})
             assert resp.get("snapshot_id") != ""
 
-            resp = srv.handle_request("restore_snapshot", {
-                "snapshot_id": resp.get("snapshot_id"),
-            })
+            resp = srv.handle_request(
+                "restore_snapshot",
+                {
+                    "snapshot_id": resp.get("snapshot_id"),
+                },
+            )
             assert resp.get("restored") is True
             srv.handle_request("close", {})
 
     def test_rpc_pause_resume(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv.handle_request("init", {})
             srv._ensure_kernel().start()
@@ -243,16 +270,22 @@ class TestSimulationServerRPCE2E:
 
     def test_rpc_unknown_method(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             resp = srv.handle_request("nonexistent", {})
             assert "error" in resp
 
     def test_rpc_reset(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv.handle_request("init", {})
             srv.handle_request("step", {"num_steps": 10})
@@ -262,6 +295,7 @@ class TestSimulationServerRPCE2E:
 
     def test_server_health_without_kernel(self):
         from fusion_simulation.service.server import SimulationServer
+
         srv = SimulationServer()
         health = srv.get_health()
         assert health.status == "stopped"
@@ -269,8 +303,11 @@ class TestSimulationServerRPCE2E:
 
     def test_server_health_with_kernel(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv._ensure_kernel()
             srv._running = True
@@ -286,9 +323,11 @@ class TestMetricsServerHTTPE2E:
             MetricsConfig,
             MetricsServer,
         )
+
         collector = MetricsCollector()
         server = MetricsServer(
-            config=MetricsConfig(port=0), collector=collector,
+            config=MetricsConfig(port=0),
+            collector=collector,
         )
         server.start()
         assert server._server is not None
@@ -297,6 +336,7 @@ class TestMetricsServerHTTPE2E:
 
     def test_metrics_collector_counters_and_gauges(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         mc.inc_counter("steps", value=10)
         mc.inc_counter("steps", value=5)
@@ -307,6 +347,7 @@ class TestMetricsServerHTTPE2E:
 
     def test_metrics_collector_prometheus_output(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         mc.inc_counter("fusion_sim_steps_total", value=100)
         mc.set_gauge("fusion_sim_frame_count", 500)
@@ -318,6 +359,7 @@ class TestMetricsServerHTTPE2E:
 
     def test_metrics_collector_with_labels(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         mc.inc_counter("requests", labels={"method": "step"})
         mc.inc_counter("requests", labels={"method": "init"})
@@ -327,6 +369,7 @@ class TestMetricsServerHTTPE2E:
 
     def test_metrics_collector_histogram(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         for v in [1.0, 2.0, 3.0, 4.0, 5.0]:
             mc.observe_histogram("latency_ms", v)
@@ -337,6 +380,7 @@ class TestMetricsServerHTTPE2E:
 
     def test_metrics_collector_reset(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         mc.inc_counter("steps", value=10)
         mc.set_gauge("frames", 100)
@@ -346,6 +390,7 @@ class TestMetricsServerHTTPE2E:
 
     def test_metrics_collector_thread_safety(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         errors = []
 
@@ -367,19 +412,23 @@ class TestMetricsServerHTTPE2E:
         assert mc.get_counter("shared_counter") == 4000.0
 
     def test_health_endpoint_via_real_http(self):
+        import httpx
+
         from fusion_simulation.service.gateway_client import HealthPayload
         from fusion_simulation.service.metrics_server import (
             MetricsCollector,
             MetricsConfig,
             MetricsServer,
         )
-        import httpx
+
         collector = MetricsCollector()
         config = MetricsConfig(host="127.0.0.1", port=18081)
         server = MetricsServer(config=config, collector=collector)
         health_payload = HealthPayload(
-            status="healthy", kernel_state="RUNNING",
-            frame_count=42, sim_time=1.23,
+            status="healthy",
+            kernel_state="RUNNING",
+            frame_count=42,
+            sim_time=1.23,
         )
         server.set_health_provider(lambda: health_payload)
         server.start()
@@ -395,12 +444,14 @@ class TestMetricsServerHTTPE2E:
             server.stop()
 
     def test_prometheus_endpoint_via_real_http(self):
+        import httpx
+
         from fusion_simulation.service.metrics_server import (
             MetricsCollector,
             MetricsConfig,
             MetricsServer,
         )
-        import httpx
+
         collector = MetricsCollector()
         collector.inc_counter("test_counter", value=7)
         config = MetricsConfig(host="127.0.0.1", port=18082)
@@ -422,6 +473,7 @@ class TestGatewayClientE2E:
             GatewayClient,
             GatewayConfig,
         )
+
         cfg = GatewayConfig(enabled=False)
         client = GatewayClient(cfg)
         assert client.register()
@@ -435,6 +487,7 @@ class TestGatewayClientE2E:
             GatewayClient,
             GatewayConfig,
         )
+
         cfg = GatewayConfig(
             gateway_url="http://127.0.0.1:19999",
             enabled=True,
@@ -452,6 +505,7 @@ class TestGatewayClientE2E:
             GatewayConfig,
             HealthPayload,
         )
+
         cfg = GatewayConfig(enabled=False)
         client = GatewayClient(cfg)
         payload = HealthPayload(status="healthy", kernel_state="RUNNING")
@@ -466,6 +520,7 @@ class TestGatewayClientE2E:
             GatewayClient,
             GatewayConfig,
         )
+
         cfg = GatewayConfig(enabled=False)
         client = GatewayClient(cfg)
         client.register()
@@ -479,8 +534,10 @@ class TestGatewayClientE2E:
 
 class TestSimulationEnvE2E:
     def test_env_init_step_reset_close(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             env = SimulationEnv(EnvConfig(headless=True))
             result = env.init()
             assert result.get("status") == "initialized"
@@ -495,8 +552,10 @@ class TestSimulationEnvE2E:
             env.close()
 
     def test_env_repeated_init_close(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             for i in range(3):
                 env = SimulationEnv(EnvConfig(headless=True))
                 env.init()
@@ -517,8 +576,10 @@ class TestSimulationEnvE2E:
         assert state.error != ""
 
     def test_env_capture_camera(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             env = SimulationEnv(EnvConfig(headless=True))
             env.init()
             data = env.capture_camera()
@@ -598,7 +659,8 @@ class TestFusionGymEnvE2E:
             headless=True,
         )
         env._term_mgr.add_termination_fn(
-            "always_terminate", lambda obs, info: True,
+            "always_terminate",
+            lambda obs, info: True,
         )
         env.reset()
         action = np.zeros(4, dtype=np.float32)
@@ -627,6 +689,7 @@ class TestFusionGymEnvE2E:
 class TestSensorAgentPipelineE2E:
     def test_multiple_sensors_observe(self):
         from fusion_simulation.sensor.base import SensorBase
+
         sm = SensorManager()
         sm.add_sensor(SensorConfig(sensor_type=SensorType.RGB_CAMERA, name="cam0"))
         mock_depth = MagicMock(spec=SensorBase)
@@ -670,6 +733,7 @@ class TestSensorAgentPipelineE2E:
 
     def test_kernel_full_pipeline_with_sensors_agents_events(self):
         from fusion_simulation.sensor.base import SensorBase
+
         sm = SensorManager()
         sm.add_sensor(SensorConfig(sensor_type=SensorType.RGB_CAMERA, name="cam0"))
         mock_imu = MagicMock(spec=SensorBase)
@@ -724,8 +788,11 @@ class TestStabilityE2E:
 
     def test_concurrent_rpc_requests(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv.handle_request("init", {})
             errors = []
@@ -738,10 +805,7 @@ class TestStabilityE2E:
                 except Exception as e:
                     errors.append(e)
 
-            threads = [
-                threading.Thread(target=rpc_step, args=(i,))
-                for i in range(20)
-            ]
+            threads = [threading.Thread(target=rpc_step, args=(i,)) for i in range(20)]
             for t in threads:
                 t.start()
             for t in threads:
@@ -756,10 +820,14 @@ class TestStabilityE2E:
 
     def test_sensor_manager_stress_100_sensors(self):
         from fusion_simulation.sensor.base import SensorBase
+
         sm = SensorManager()
-        sm.add_sensor(SensorConfig(
-            sensor_type=SensorType.RGB_CAMERA, name="cam_000",
-        ))
+        sm.add_sensor(
+            SensorConfig(
+                sensor_type=SensorType.RGB_CAMERA,
+                name="cam_000",
+            )
+        )
         for i in range(1, 100):
             mock_s = MagicMock(spec=SensorBase)
             mock_s.get_observation.return_value = {"data": i}
@@ -771,9 +839,13 @@ class TestStabilityE2E:
     def test_agent_manager_stress_50_agents(self):
         am = AgentManager()
         for i in range(50):
-            am.add_agent(AgentConfig(
-                name=f"bot_{i:03d}", role=AgentRole.ROBOT, action_dim=6,
-            ))
+            am.add_agent(
+                AgentConfig(
+                    name=f"bot_{i:03d}",
+                    role=AgentRole.ROBOT,
+                    action_dim=6,
+                )
+            )
         actions = am.step_all()
         assert len(actions) == 50
 
@@ -800,23 +872,31 @@ class TestStabilityE2E:
 
 class TestGUIStabilityE2E:
     def test_metrics_health_endpoint_structure(self):
+        import httpx
+
         from fusion_simulation.service.gateway_client import HealthPayload
         from fusion_simulation.service.metrics_server import (
             MetricsCollector,
             MetricsConfig,
             MetricsServer,
         )
-        import httpx
+
         collector = MetricsCollector()
         collector.inc_counter("fusion_sim_steps_total", value=50)
         collector.set_gauge("fusion_sim_frame_count", 100)
         config = MetricsConfig(host="127.0.0.1", port=18083)
         server = MetricsServer(config=config, collector=collector)
-        server.set_health_provider(lambda: HealthPayload(
-            status="healthy", kernel_state="RUNNING",
-            frame_count=100, sim_time=3.14,
-            sensor_count=2, agent_count=3, uptime_seconds=60.0,
-        ))
+        server.set_health_provider(
+            lambda: HealthPayload(
+                status="healthy",
+                kernel_state="RUNNING",
+                frame_count=100,
+                sim_time=3.14,
+                sensor_count=2,
+                agent_count=3,
+                uptime_seconds=60.0,
+            )
+        )
         server.start()
         time.sleep(0.3)
         try:
@@ -830,12 +910,14 @@ class TestGUIStabilityE2E:
             server.stop()
 
     def test_metrics_prometheus_format(self):
+        import httpx
+
         from fusion_simulation.service.metrics_server import (
             MetricsCollector,
             MetricsConfig,
             MetricsServer,
         )
-        import httpx
+
         collector = MetricsCollector()
         for i in range(100):
             collector.inc_counter("fusion_sim_steps_total")
@@ -856,12 +938,14 @@ class TestGUIStabilityE2E:
             server.stop()
 
     def test_metrics_404_for_unknown_path(self):
+        import httpx
+
         from fusion_simulation.service.metrics_server import (
             MetricsCollector,
             MetricsConfig,
             MetricsServer,
         )
-        import httpx
+
         collector = MetricsCollector()
         config = MetricsConfig(host="127.0.0.1", port=18085)
         server = MetricsServer(config=config, collector=collector)
@@ -875,8 +959,11 @@ class TestGUIStabilityE2E:
 
     def test_server_event_streaming(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv._running = True
             q = srv.subscribe_events()
@@ -891,9 +978,12 @@ class TestGUIStabilityE2E:
 
     def test_server_start_stop_lifecycle(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"), \
-             patch("grpc.server") as mock_grpc_server:
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+            patch("grpc.server") as mock_grpc_server,
+        ):
             mock_srv = MagicMock()
             mock_grpc_server.return_value = mock_srv
             srv = SimulationServer()
@@ -907,9 +997,12 @@ class TestGUIStabilityE2E:
 
     def test_server_repeated_start_stop(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"), \
-             patch("grpc.server") as mock_grpc_server:
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+            patch("grpc.server") as mock_grpc_server,
+        ):
             mock_srv = MagicMock()
             mock_grpc_server.return_value = mock_srv
             for _ in range(3):
@@ -1009,8 +1102,10 @@ class TestGymManagersE2E:
 
 class TestCLIE2E:
     def test_version_command(self, capsys):
-        from fusion_simulation.cli import main
         import sys
+
+        from fusion_simulation.cli import main
+
         old_argv = sys.argv
         sys.argv = ["fusion-simulation", "version"]
         try:
@@ -1021,8 +1116,10 @@ class TestCLIE2E:
         assert "Fusion-Simulation" in captured.out
 
     def test_scene_list_command(self, capsys):
-        from fusion_simulation.cli import main
         import sys
+
+        from fusion_simulation.cli import main
+
         old_argv = sys.argv
         sys.argv = ["fusion-simulation", "scene", "list"]
         try:
@@ -1033,8 +1130,10 @@ class TestCLIE2E:
         assert "pick" in captured.out
 
     def test_agent_spawn_command(self, capsys):
-        from fusion_simulation.cli import main
         import sys
+
+        from fusion_simulation.cli import main
+
         old_argv = sys.argv
         sys.argv = ["fusion-simulation", "agent", "spawn", "--name=robot0", "--action-dim=6"]
         try:
@@ -1045,8 +1144,10 @@ class TestCLIE2E:
         assert "robot0" in captured.out
 
     def test_sensor_add_command(self, capsys):
-        from fusion_simulation.cli import main
         import sys
+
+        from fusion_simulation.cli import main
+
         old_argv = sys.argv
         sys.argv = ["fusion-simulation", "sensor", "add", "--type=rgb_camera", "--name=cam0"]
         try:

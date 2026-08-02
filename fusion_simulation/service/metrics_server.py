@@ -85,9 +85,7 @@ class MetricsCollector:
                     idx = min(int(count * q), count - 1)
                     label_inner = labels[1:-1] if labels else ""
                     prefix = f"{label_inner}," if label_inner else ""
-                    lines.append(
-                        f'{name}{{{prefix}quantile="{q}"}} {sorted_vals[idx]:.6g}'
-                    )
+                    lines.append(f'{name}{{{prefix}quantile="{q}"}} {sorted_vals[idx]:.6g}')
         return "\n".join(lines) + "\n"
 
     @staticmethod
@@ -143,6 +141,7 @@ class _MetricsHandler(BaseHTTPRequestHandler):
             try:
                 health = self._health_provider()
                 from fusion_simulation.service.gateway_client import HealthPayload
+
                 if isinstance(health, HealthPayload):
                     payload = {
                         "status": health.status,
@@ -207,7 +206,8 @@ class MetricsServer:
                 super().__init__(*args, **kwargs)
 
         self._server = HTTPServer(
-            (self._config.host, self._config.port), Handler,
+            (self._config.host, self._config.port),
+            Handler,
         )
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()

@@ -20,25 +20,32 @@ class BCTrainer:
         self._history: dict[str, list[float]] = {"loss": [], "accuracy": []}
         self._client = httpx.AsyncClient(timeout=120.0)
 
-    async def train_step(self, observations: list[list[float]], actions: list[list[float]], lr: float = 1e-4) -> dict[str, float]:
+    async def train_step(
+        self, observations: list[list[float]], actions: list[list[float]], lr: float = 1e-4
+    ) -> dict[str, float]:
         if not observations or not actions:
             return {"loss": 0.0, "accuracy": 0.0}
         try:
-            resp = await self._client.post(f"{self.mlx_url}/chat/completions", json={
-                "model": self.model,
-                "messages": [{
-                    "role": "user",
-                    "content": (
-                        f"Training step: {len(observations)} samples, "
-                        f"lr={lr}. "
-                        f"Observation dim: {len(observations[0])}, "
-                        f"Action dim: {len(actions[0])}. "
-                        f"Compute loss and return as JSON: {{\"loss\": 0.0, \"accuracy\": 0.0}}"
-                    ),
-                }],
-                "max_tokens": 64,
-                "temperature": 0.0,
-            })
+            resp = await self._client.post(
+                f"{self.mlx_url}/chat/completions",
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Training step: {len(observations)} samples, "
+                                f"lr={lr}. "
+                                f"Observation dim: {len(observations[0])}, "
+                                f"Action dim: {len(actions[0])}. "
+                                f'Compute loss and return as JSON: {{"loss": 0.0, "accuracy": 0.0}}'
+                            ),
+                        }
+                    ],
+                    "max_tokens": 64,
+                    "temperature": 0.0,
+                },
+            )
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
             result = json.loads(content)
@@ -49,14 +56,16 @@ class BCTrainer:
         self._history["accuracy"].append(result.get("accuracy", 0.0))
         return result
 
-    async def train(self, dataset: list[dict[str, Any]], epochs: int = 10, batch_size: int = 32, lr: float = 1e-4) -> dict[str, Any]:
+    async def train(
+        self, dataset: list[dict[str, Any]], epochs: int = 10, batch_size: int = 32, lr: float = 1e-4
+    ) -> dict[str, Any]:
         total_samples = len(dataset)
         start_time = time.time()
         for epoch in range(epochs):
             epoch_loss = 0.0
             num_batches = 0
             for i in range(0, total_samples, batch_size):
-                batch = dataset[i:i + batch_size]
+                batch = dataset[i : i + batch_size]
                 obs = [item["observation"] for item in batch]
                 act = [item["action"] for item in batch]
                 result = await self.train_step(obs, act, lr)
@@ -73,7 +82,9 @@ class BCTrainer:
             "history": self._history,
         }
 
-    async def train_with_kernel(self, kernel: Any, agent_name: str, epochs: int = 10, steps_per_epoch: int = 100, lr: float = 1e-4) -> dict[str, Any]:
+    async def train_with_kernel(
+        self, kernel: Any, agent_name: str, epochs: int = 10, steps_per_epoch: int = 100, lr: float = 1e-4
+    ) -> dict[str, Any]:
         logger.info("Kernel-based training: agent=%s epochs=%d steps=%d", agent_name, epochs, steps_per_epoch)
         start_time = time.time()
         for epoch in range(epochs):

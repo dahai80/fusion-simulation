@@ -66,7 +66,7 @@ class EventBus:
         event = Event(kind=kind, timestamp=timestamp, data=data or {})
         self._event_log.append(event)
         if len(self._event_log) > self._max_log_size:
-            self._event_log = self._event_log[-self._max_log_size:]
+            self._event_log = self._event_log[-self._max_log_size :]
         for handler in self._handlers.get(kind, []):
             try:
                 handler(event)

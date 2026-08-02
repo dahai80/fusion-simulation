@@ -1,0 +1,80 @@
+namespace fusion_simulation.flatbuf;
+
+table Vec3 {
+    x:float;
+    y:float;
+    z:float;
+}
+
+table Quaternion {
+    w:float;
+    x:float;
+    y:float;
+    z:float;
+}
+
+table BoundingBox {
+    x_min:float;
+    y_min:float;
+    x_max:float;
+    y_max:float;
+    label:string;
+}
+
+table RGBImage {
+    width:int;
+    height:int;
+    channels:int=3;
+    data:[ubyte];
+}
+
+table DepthImage {
+    width:int;
+    height:int;
+    data:[float];
+}
+
+table IMUReading {
+    acceleration:Vec3;
+    angular_velocity:Vec3;
+    orientation:Quaternion;
+    timestamp:double;
+}
+
+table ContactInfo {
+    body_a:int;
+    body_b:int;
+    position:Vec3;
+    normal_force:float;
+}
+
+table SensorDataFlat {
+    sensor_id:string;
+    sensor_type:string;
+    timestamp:double;
+    frame_count:long;
+    rgb:RGBImage;
+    depth:DepthImage;
+    imu:IMUReading;
+    contacts:[ContactInfo];
+    bboxes:[BoundingBox];
+}
+
+table EntityStateFlat {
+    entity_id:string;
+    position:Vec3;
+    orientation:Quaternion;
+    linear_velocity:Vec3;
+    angular_velocity:Vec3;
+    joint_positions:[float];
+    joint_velocities:[float];
+}
+
+table SimStateFrameFlat {
+    sim_time:double;
+    frame_count:long;
+    entities:[EntityStateFlat];
+    sensor_readings:[SensorDataFlat];
+}
+
+root_type SimStateFrameFlat;

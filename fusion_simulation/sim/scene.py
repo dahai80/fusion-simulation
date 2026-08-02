@@ -99,8 +99,9 @@ class SceneResourceManager:
             except Exception as e:
                 results["errors"].append(f"{asset.name}: {e}")
                 logger.error("Failed to load asset %s: %s", asset.name, e)
-        logger.info("Scene '%s' loaded: %d assets, %d errors",
-                     scene_config.name, len(results["assets"]), len(results["errors"]))
+        logger.info(
+            "Scene '%s' loaded: %d assets, %d errors", scene_config.name, len(results["assets"]), len(results["errors"])
+        )
         return results
 
     def load_scene_from_dict(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -132,10 +133,7 @@ class SceneResourceManager:
         logger.info("Scene unloaded")
 
     def list_builtin_scenes(self) -> list[dict[str, str]]:
-        return [
-            {"name": k, "description": v.get("description", "")}
-            for k, v in self.BUILTIN_SCENES.items()
-        ]
+        return [{"name": k, "description": v.get("description", "")} for k, v in self.BUILTIN_SCENES.items()]
 
     def save_scene(self, scene_config: SceneConfig, path: str) -> None:
         p = Path(path).expanduser().resolve()
@@ -147,7 +145,8 @@ class SceneResourceManager:
     def _load_asset(self, asset: SceneAsset) -> int:
         if asset.asset_type == "urdf":
             body_id = self._physics.load_urdf(
-                asset.path, position=asset.position,
+                asset.path,
+                position=asset.position,
                 orientation=asset.orientation,
                 fixed_base=asset.fixed_base,
             )
@@ -168,14 +167,16 @@ class SceneResourceManager:
     def _dict_to_scene_config(self, data: dict[str, Any]) -> SceneConfig:
         assets = []
         for a in data.get("assets", []):
-            assets.append(SceneAsset(
-                asset_type=a.get("asset_type", "urdf"),
-                path=a.get("path", ""),
-                position=a.get("position", [0.0, 0.0, 0.0]),
-                orientation=a.get("orientation", [0.0, 0.0, 0.0, 1.0]),
-                fixed_base=a.get("fixed_base", False),
-                name=a.get("name", ""),
-            ))
+            assets.append(
+                SceneAsset(
+                    asset_type=a.get("asset_type", "urdf"),
+                    path=a.get("path", ""),
+                    position=a.get("position", [0.0, 0.0, 0.0]),
+                    orientation=a.get("orientation", [0.0, 0.0, 0.0, 1.0]),
+                    fixed_base=a.get("fixed_base", False),
+                    name=a.get("name", ""),
+                )
+            )
         return SceneConfig(
             name=data.get("name", "unnamed"),
             description=data.get("description", ""),

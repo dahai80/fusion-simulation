@@ -7,20 +7,23 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from fusion_simulation.agent.config import AgentConfig, AgentRole
-from fusion_simulation.agent.scheduler import PromptScheduler, ScheduleEntry, ScheduleResult
-from fusion_simulation.core.kernel import FrameResult, KernelConfig, KernelState, SimulationKernel
-from fusion_simulation.core.clock import SimClock
-from fusion_simulation.core.ecs import EntityManager, RigidBody, Transform
-from fusion_simulation.core.event_bus import EventBus, EventKind
-from fusion_simulation.core.world_state import WorldState
+from fusion_simulation.agent.config import AgentConfig
 from fusion_simulation.agent.policy import PolicyClient
+from fusion_simulation.agent.scheduler import (
+    PromptScheduler,
+)
+from fusion_simulation.core.ecs import EntityManager, RigidBody, Transform
+from fusion_simulation.core.kernel import (
+    FrameResult,
+    KernelConfig,
+    KernelState,
+    SimulationKernel,
+)
 
 
 class TestKernelState:
@@ -79,8 +82,10 @@ class TestKernelUninitialized:
 
 class TestKernelInit:
     def test_init_creates_sensor_and_agent_managers(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             k = SimulationKernel(KernelConfig(headless=True))
             k.init()
             assert k.sensor_manager is not None
@@ -89,15 +94,19 @@ class TestKernelInit:
             assert k.kernel_state == KernelState.INITIALIZED
 
     def test_init_with_scheduler(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             k = SimulationKernel(KernelConfig(headless=True, use_scheduler=True))
             k.init()
             assert k.scheduler is not None
 
     def test_init_without_scheduler(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             k = SimulationKernel(KernelConfig(headless=True, use_scheduler=False))
             k.init()
             assert k.scheduler is None
@@ -105,48 +114,61 @@ class TestKernelInit:
 
 class TestKernelStepOnce:
     def test_step_once_returns_frame_result(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             k = SimulationKernel(KernelConfig(headless=True))
             k.init()
-            with patch.object(k._physics, "step"), \
-                 patch.object(k._render, "render"):
+            with patch.object(k._physics, "step"), patch.object(k._render, "render"):
                 fr = k.step_once()
                 assert isinstance(fr, FrameResult)
                 assert fr.frame_count == 1
 
     def test_step_once_with_mock_physics(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             k = SimulationKernel(KernelConfig(headless=True))
             k.init()
-            with patch.object(k._physics, "step"), \
-                 patch.object(k._render, "render"), \
-                 patch.object(k._sensor_manager, "update"), \
-                 patch.object(k._agent_manager, "step_all", return_value={}):
+            with (
+                patch.object(k._physics, "step"),
+                patch.object(k._render, "render"),
+                patch.object(k._sensor_manager, "update"),
+                patch.object(k._agent_manager, "step_all", return_value={}),
+            ):
                 fr = k.step_once()
                 assert fr.frame_count == 1
 
 
 class TestKernelAsyncRun:
     def test_run_async_creates_task(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             k = SimulationKernel(KernelConfig(headless=True, max_steps=3))
             k.init()
-            with patch.object(k._physics, "step"), \
-                 patch.object(k._render, "render"), \
-                 patch.object(k._agent_manager, "step_all", return_value={}):
+            with (
+                patch.object(k._physics, "step"),
+                patch.object(k._render, "render"),
+                patch.object(k._agent_manager, "step_all", return_value={}),
+            ):
+
                 async def _run():
                     task = await k.run_async()
                     await asyncio.sleep(0.5)
                     return k.clock.frame_count
+
                 count = asyncio.run(_run())
                 assert count >= 0
 
     def test_stop_run(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             k = SimulationKernel(KernelConfig(headless=True))
             k.init()
             k.stop_run()
@@ -155,8 +177,10 @@ class TestKernelAsyncRun:
 
 class TestKernelPauseResume:
     def test_pause_changes_state(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             k = SimulationKernel(KernelConfig(headless=True))
             k.init()
             k.start()
@@ -164,8 +188,10 @@ class TestKernelPauseResume:
             assert k.kernel_state == KernelState.PAUSED
 
     def test_resume_changes_state(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             k = SimulationKernel(KernelConfig(headless=True))
             k.init()
             k.start()
@@ -183,12 +209,14 @@ class TestKernelSceneLoad:
 
 class TestKernelSyncEcs:
     def test_sync_ecs_from_physics_with_body_map(self):
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             k = SimulationKernel(KernelConfig(headless=True))
             k.init()
-            from fusion_simulation.core.ecs import EntityId
             from fusion_simulation.physics.base import BodyState
+
             eid = k._ecs.create_entity()
             k._ecs.add_component(eid, Transform(entity_id=eid))
             k._ecs.add_component(eid, RigidBody(entity_id=eid))
@@ -199,8 +227,10 @@ class TestKernelSyncEcs:
                 orientation=[0.0, 0.0, 0.0, 1.0],
                 linear_velocity=[0.1, 0.2, 0.3],
             )
-            with patch.object(k._physics, "get_body_state", return_value=body_state), \
-                 patch.object(type(k._physics), "is_initialized", new_callable=lambda: property(lambda self: True)):
+            with (
+                patch.object(k._physics, "get_body_state", return_value=body_state),
+                patch.object(type(k._physics), "is_initialized", new_callable=lambda: property(lambda self: True)),
+            ):
                 k._sync_ecs_from_physics()
             t = k._ecs.get_component(eid, Transform)
             assert t.position == [1.0, 2.0, 3.0]
@@ -213,11 +243,10 @@ class TestPolicyClientVision:
         with patch.object(client._client, "post") as mock_post:
             mock_resp = MagicMock()
             mock_resp.status_code = 200
-            mock_resp.json.return_value = {
-                "choices": [{"message": {"content": "[0.5, 0.3, 0.1]"}}]
-            }
+            mock_resp.json.return_value = {"choices": [{"message": {"content": "[0.5, 0.3, 0.1]"}}]}
             mock_post.return_value = mock_resp
             import base64
+
             img_bytes = base64.b64decode(fake_b64)
             action = client.infer_from_image(img_bytes, action_dim=3)
             assert len(action) == 3
@@ -229,9 +258,7 @@ class TestPolicyClientVision:
         with patch.object(client._client, "post") as mock_post:
             mock_resp = MagicMock()
             mock_resp.status_code = 200
-            mock_resp.json.return_value = {
-                "choices": [{"message": {"content": "[1.0, 0.0]"}}]
-            }
+            mock_resp.json.return_value = {"choices": [{"message": {"content": "[1.0, 0.0]"}}]}
             mock_post.return_value = mock_resp
             action = client.infer_from_image(b64_str, action_dim=2)
             assert len(action) == 2
@@ -248,10 +275,12 @@ class TestPolicyClientVision:
         client = PolicyClient()
         try:
             import numpy as np
+
             arr = np.zeros((10, 10, 3), dtype=np.uint8)
             result = client._encode_image(arr)
             assert isinstance(result, str)
             import base64
+
             decoded = base64.b64decode(result)
             assert len(decoded) > 0
         except ImportError:
@@ -271,9 +300,7 @@ class TestPolicyClientStats:
         with patch.object(client._client, "post") as mock_post:
             mock_resp = MagicMock()
             mock_resp.status_code = 200
-            mock_resp.json.return_value = {
-                "choices": [{"message": {"content": "[0.1]"}}]
-            }
+            mock_resp.json.return_value = {"choices": [{"message": {"content": "[0.1]"}}]}
             mock_post.return_value = mock_resp
             client.predict({"key": "value"}, action_dim=1)
         stats = client.stats()
@@ -284,8 +311,9 @@ class TestPolicyClientStats:
 
 class TestAgentManagerVisionLoop:
     def test_observe_act_loop_no_image(self):
-        from fusion_simulation.agent.manager import AgentManager, AgentHandle
+        from fusion_simulation.agent.manager import AgentManager
         from fusion_simulation.sensor.manager import SensorManager
+
         am = AgentManager(ecs=EntityManager(), sensor_manager=SensorManager())
         cfg = AgentConfig(name="test", entity_id="e1", action_dim=3)
         am.add_agent(cfg)
@@ -295,6 +323,7 @@ class TestAgentManagerVisionLoop:
 
     def test_observe_act_loop_agent_done(self):
         from fusion_simulation.agent.manager import AgentManager
+
         am = AgentManager(ecs=EntityManager())
         cfg = AgentConfig(name="done_agent", entity_id="e1", action_dim=2)
         am.add_agent(cfg)
@@ -305,6 +334,7 @@ class TestAgentManagerVisionLoop:
 
     def test_step_all_with_vision(self):
         from fusion_simulation.agent.manager import AgentManager
+
         am = AgentManager(ecs=EntityManager())
         cfg = AgentConfig(name="v_agent", entity_id="e1", action_dim=2)
         am.add_agent(cfg)
@@ -316,6 +346,7 @@ class TestAgentManagerVisionLoop:
 class TestPromptScheduler:
     def _make_scheduler(self) -> PromptScheduler:
         from fusion_simulation.agent.manager import AgentManager
+
         am = AgentManager(ecs=EntityManager())
         cfg = AgentConfig(name="robot1", entity_id="e1", action_dim=3, decimation=1)
         am.add_agent(cfg)
@@ -364,6 +395,7 @@ class TestPromptScheduler:
 
     def test_tick_priority_order(self):
         from fusion_simulation.agent.manager import AgentManager
+
         am = AgentManager(ecs=EntityManager())
         am.add_agent(AgentConfig(name="low", entity_id="e1", action_dim=2, decimation=1))
         am.add_agent(AgentConfig(name="high", entity_id="e2", action_dim=2, decimation=1))
@@ -371,9 +403,11 @@ class TestPromptScheduler:
         ps.add_schedule("low", priority=0)
         ps.add_schedule("high", priority=10)
         call_order = []
+
         def mock_loop(name):
             call_order.append(name)
             return [0.0, 0.0]
+
         with patch.object(am, "observe_act_loop", side_effect=mock_loop):
             ps.tick(sim_time=0.01)
         assert call_order[0] == "high"
@@ -409,8 +443,11 @@ class TestPromptScheduler:
 class TestServerNewRpcs:
     def test_pause_rpc(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv.handle_request("init", {})
             resp = srv.handle_request("pause", {})
@@ -418,8 +455,11 @@ class TestServerNewRpcs:
 
     def test_resume_rpc(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv.handle_request("init", {})
             srv.handle_request("pause", {})
@@ -428,13 +468,18 @@ class TestServerNewRpcs:
 
     def test_step_returns_frame_timing(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv.handle_request("init", {})
-            with patch.object(srv._kernel._physics, "step"), \
-                 patch.object(srv._kernel._render, "render"), \
-                 patch.object(srv._kernel._agent_manager, "step_all", return_value={}):
+            with (
+                patch.object(srv._kernel._physics, "step"),
+                patch.object(srv._kernel._render, "render"),
+                patch.object(srv._kernel._agent_manager, "step_all", return_value={}),
+            ):
                 resp = srv.handle_request("step", {"num_steps": 1})
                 assert "physics_step_ms" in resp
                 assert "total_ms" in resp
@@ -443,19 +488,28 @@ class TestServerNewRpcs:
 class TestGatewayClient:
     def test_config_defaults(self):
         from fusion_simulation.service.gateway_client import GatewayConfig
+
         cfg = GatewayConfig()
         assert cfg.gateway_url == "http://127.0.0.1:11432"
         assert cfg.service_name == "fusion-simulation"
         assert cfg.enabled is False
 
     def test_register_disabled(self):
-        from fusion_simulation.service.gateway_client import GatewayClient, GatewayConfig
+        from fusion_simulation.service.gateway_client import (
+            GatewayClient,
+            GatewayConfig,
+        )
+
         gc = GatewayClient(GatewayConfig(enabled=False))
         assert gc.register() is True
         assert gc.is_registered is True
 
     def test_register_enabled_fails_gracefully(self):
-        from fusion_simulation.service.gateway_client import GatewayClient, GatewayConfig
+        from fusion_simulation.service.gateway_client import (
+            GatewayClient,
+            GatewayConfig,
+        )
+
         gc = GatewayClient(GatewayConfig(enabled=True, gateway_url="http://127.0.0.1:1"))
         assert gc.register() is False
         assert gc.is_registered is False
@@ -463,16 +517,22 @@ class TestGatewayClient:
 
     def test_deregister_without_register(self):
         from fusion_simulation.service.gateway_client import GatewayClient
+
         gc = GatewayClient()
         assert gc.deregister() is True
 
     def test_send_heartbeat_not_registered(self):
         from fusion_simulation.service.gateway_client import GatewayClient
+
         gc = GatewayClient()
         assert gc.send_heartbeat() is False
 
     def test_health_provider(self):
-        from fusion_simulation.service.gateway_client import GatewayClient, HealthPayload
+        from fusion_simulation.service.gateway_client import (
+            GatewayClient,
+            HealthPayload,
+        )
+
         gc = GatewayClient()
         gc._start_time = time.time()
         gc.set_health_provider(lambda: HealthPayload(status="healthy", kernel_state="RUNNING"))
@@ -485,6 +545,7 @@ class TestGatewayClient:
 class TestMetricsCollector:
     def test_counter(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         mc.inc_counter("test_counter")
         assert mc.get_counter("test_counter") == 1.0
@@ -493,6 +554,7 @@ class TestMetricsCollector:
 
     def test_gauge(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         mc.set_gauge("test_gauge", 42.0)
         assert mc.get_gauge("test_gauge") == 42.0
@@ -501,6 +563,7 @@ class TestMetricsCollector:
 
     def test_histogram(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         mc.observe_histogram("latency", 5.0)
         mc.observe_histogram("latency", 10.0)
@@ -511,6 +574,7 @@ class TestMetricsCollector:
 
     def test_labels(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         mc.inc_counter("requests", labels={"method": "step"})
         mc.inc_counter("requests", labels={"method": "reset"})
@@ -519,6 +583,7 @@ class TestMetricsCollector:
 
     def test_prometheus_output(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         mc.inc_counter("steps_total")
         mc.set_gauge("frame_count", 100)
@@ -530,6 +595,7 @@ class TestMetricsCollector:
 
     def test_reset(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         mc.inc_counter("c")
         mc.set_gauge("g", 1.0)
@@ -540,14 +606,23 @@ class TestMetricsCollector:
 
 class TestMetricsServer:
     def test_start_stop(self):
-        from fusion_simulation.service.metrics_server import MetricsServer, MetricsConfig
+        from fusion_simulation.service.metrics_server import (
+            MetricsConfig,
+            MetricsServer,
+        )
+
         ms = MetricsServer(MetricsConfig(port=0))
         ms.start()
         ms.stop()
 
     def test_health_endpoint(self):
-        from fusion_simulation.service.metrics_server import MetricsServer, MetricsCollector, MetricsConfig
         import httpx
+
+        from fusion_simulation.service.metrics_server import (
+            MetricsConfig,
+            MetricsServer,
+        )
+
         cfg = MetricsConfig(host="127.0.0.1", port=18081)
         ms = MetricsServer(config=cfg)
         ms.set_health_provider(lambda: {"status": "healthy", "frame_count": 42})
@@ -561,8 +636,14 @@ class TestMetricsServer:
             ms.stop()
 
     def test_metrics_endpoint(self):
-        from fusion_simulation.service.metrics_server import MetricsServer, MetricsCollector, MetricsConfig
         import httpx
+
+        from fusion_simulation.service.metrics_server import (
+            MetricsCollector,
+            MetricsConfig,
+            MetricsServer,
+        )
+
         cfg = MetricsConfig(host="127.0.0.1", port=18082)
         mc = MetricsCollector()
         mc.inc_counter("test_steps")
@@ -579,8 +660,11 @@ class TestMetricsServer:
 class TestServerHealthAndMetrics:
     def test_get_health_initialized(self):
         from fusion_simulation.service.server import SimulationServer
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer()
             srv.handle_request("init", {})
             srv._running = True
@@ -590,21 +674,27 @@ class TestServerHealthAndMetrics:
 
     def test_get_health_stopped(self):
         from fusion_simulation.service.server import SimulationServer
+
         srv = SimulationServer()
         health = srv.get_health()
         assert health.status == "stopped"
 
     def test_metrics_collector_on_step(self):
-        from fusion_simulation.service.server import SimulationServer
         from fusion_simulation.service.metrics_server import MetricsConfig
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        from fusion_simulation.service.server import SimulationServer
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer(metrics_config=MetricsConfig(port=0))
             srv._start_metrics()
             srv.handle_request("init", {})
-            with patch.object(srv._kernel._physics, "step"), \
-                 patch.object(srv._kernel._render, "render"), \
-                 patch.object(srv._agent_manager, "step_all", return_value={}):
+            with (
+                patch.object(srv._kernel._physics, "step"),
+                patch.object(srv._kernel._render, "render"),
+                patch.object(srv._agent_manager, "step_all", return_value={}),
+            ):
                 srv.handle_request("step", {"num_steps": 1})
             mc = srv.metrics_collector
             assert mc is not None
@@ -614,6 +704,7 @@ class TestServerHealthAndMetrics:
 class TestCLIAgent:
     def test_agent_spawn(self, capsys):
         from fusion_simulation.cli import _cmd_agent_dispatch
+
         args = MagicMock()
         args.action = "spawn"
         args.name = "test_bot"
@@ -628,6 +719,7 @@ class TestCLIAgent:
 
     def test_agent_list(self, capsys):
         from fusion_simulation.cli import _cmd_agent_dispatch
+
         args = MagicMock()
         args.action = "list"
         _cmd_agent_dispatch(args)
@@ -636,6 +728,7 @@ class TestCLIAgent:
 
     def test_agent_destroy(self, capsys):
         from fusion_simulation.cli import _cmd_agent_dispatch
+
         args = MagicMock()
         args.action = "destroy"
         args.name = "test_bot"
@@ -647,6 +740,7 @@ class TestCLIAgent:
 class TestCLISensor:
     def test_sensor_add(self, capsys):
         from fusion_simulation.cli import _cmd_sensor_dispatch
+
         args = MagicMock()
         args.action = "add"
         args.type = "rgb_camera"
@@ -661,6 +755,7 @@ class TestCLISensor:
 
     def test_sensor_list(self, capsys):
         from fusion_simulation.cli import _cmd_sensor_dispatch
+
         args = MagicMock()
         args.action = "list"
         _cmd_sensor_dispatch(args)
@@ -671,6 +766,7 @@ class TestCLISensor:
 class TestCLISnapshot:
     def test_snapshot_save(self, capsys):
         from fusion_simulation.cli import _cmd_snapshot_dispatch
+
         args = MagicMock()
         args.action = "save"
         args.name = "checkpoint_1"
@@ -680,6 +776,7 @@ class TestCLISnapshot:
 
     def test_snapshot_restore(self, capsys):
         from fusion_simulation.cli import _cmd_snapshot_dispatch
+
         args = MagicMock()
         args.action = "restore"
         args.name = "checkpoint_1"
@@ -691,6 +788,7 @@ class TestCLISnapshot:
 class TestCLIServiceStop:
     def test_service_stop(self, capsys):
         from fusion_simulation.cli import _cmd_service_dispatch
+
         args = MagicMock()
         args.action = "stop"
         _cmd_service_dispatch(args)
@@ -701,6 +799,7 @@ class TestCLIServiceStop:
 class TestCLIServiceHealth:
     def test_service_health_unreachable(self, capsys):
         from fusion_simulation.cli import _cmd_service_dispatch
+
         args = MagicMock()
         args.action = "health"
         args.url = "http://127.0.0.1:19999"
@@ -712,6 +811,7 @@ class TestCLIServiceHealth:
 class TestCLIVersion:
     def test_version_output(self, capsys):
         from fusion_simulation.cli import _cmd_version
+
         _cmd_version()
         out = capsys.readouterr().out
         assert "Fusion-Simulation" in out
@@ -721,6 +821,7 @@ class TestCLIVersion:
 class TestCLIGateway:
     def test_gateway_register_disabled(self, capsys):
         from fusion_simulation.cli import _cmd_gateway_dispatch
+
         args = MagicMock()
         args.action = "register"
         args.gateway_url = "http://127.0.0.1:11432"
@@ -736,6 +837,7 @@ class TestCLIGateway:
 class TestCLIArgparse:
     def test_agent_spawn_args(self, capsys):
         from fusion_simulation.cli import _cmd_agent_dispatch
+
         args = MagicMock()
         args.action = "spawn"
         args.name = "bot1"
@@ -749,6 +851,7 @@ class TestCLIArgparse:
 
     def test_sensor_add_imu(self, capsys):
         from fusion_simulation.cli import _cmd_sensor_dispatch
+
         args = MagicMock()
         args.action = "add"
         args.type = "imu"
@@ -762,6 +865,7 @@ class TestCLIArgparse:
 
     def test_snapshot_save_default(self, capsys):
         from fusion_simulation.cli import _cmd_snapshot_dispatch
+
         args = MagicMock()
         args.action = "save"
         args.name = "default"
@@ -771,6 +875,7 @@ class TestCLIArgparse:
 
     def test_service_start_includes_metrics(self):
         from fusion_simulation.cli import _cmd_service_dispatch
+
         args = MagicMock()
         args.action = "start"
         args.host = "0.0.0.0"

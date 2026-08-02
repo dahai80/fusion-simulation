@@ -1,19 +1,15 @@
 from __future__ import annotations
 
-import asyncio
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
-
-from fusion_simulation.core.kernel import KernelConfig, KernelState, SimulationKernel
-from fusion_simulation.core.ecs import EntityManager, Transform, RigidBody
-from fusion_simulation.core.event_bus import EventBus, EventKind
-from fusion_simulation.core.clock import SimClock
-from fusion_simulation.sensor.manager import SensorManager
-from fusion_simulation.sensor.base import SensorConfig, SensorType
-from fusion_simulation.agent.manager import AgentManager
 from fusion_simulation.agent.config import AgentConfig, AgentRole
+from fusion_simulation.agent.manager import AgentManager
+from fusion_simulation.core.ecs import EntityManager, RigidBody, Transform
+from fusion_simulation.core.event_bus import EventBus, EventKind
+from fusion_simulation.core.kernel import KernelConfig, KernelState, SimulationKernel
+from fusion_simulation.sensor.base import SensorConfig, SensorType
+from fusion_simulation.sensor.manager import SensorManager
 
 
 class TestEndToEndKernelLifecycle:
@@ -109,10 +105,13 @@ class TestEndToEndECSSync:
 
 class TestEndToEndServiceHealth:
     def test_server_health_via_metrics(self):
-        from fusion_simulation.service.server import SimulationServer
         from fusion_simulation.service.metrics_server import MetricsConfig
-        with patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"), \
-             patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"):
+        from fusion_simulation.service.server import SimulationServer
+
+        with (
+            patch("fusion_simulation.physics.pybullet_engine.PyBulletEngine.init"),
+            patch("fusion_simulation.render.pybullet_render.PyBulletRender.init"),
+        ):
             srv = SimulationServer(metrics_config=MetricsConfig(port=0))
             srv._start_metrics()
             srv._running = True
@@ -124,7 +123,11 @@ class TestEndToEndServiceHealth:
 
 class TestEndToEndGatewayRegistration:
     def test_gateway_register_deregister(self):
-        from fusion_simulation.service.gateway_client import GatewayClient, GatewayConfig
+        from fusion_simulation.service.gateway_client import (
+            GatewayClient,
+            GatewayConfig,
+        )
+
         cfg = GatewayConfig(enabled=False)
         client = GatewayClient(cfg)
         assert client.register()
@@ -197,6 +200,7 @@ class TestPerformanceBenchmarks:
 
     def test_metrics_collector_throughput(self):
         from fusion_simulation.service.metrics_server import MetricsCollector
+
         mc = MetricsCollector()
         start = time.perf_counter()
         for i in range(10000):
