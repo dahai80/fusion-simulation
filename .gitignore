@@ -18,3 +18,4 @@ htmlcov/
 *.heapsnapshot
 *.json.gz
 .codegraph/
+CLAUDE.md

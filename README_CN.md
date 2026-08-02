@@ -1,18 +1,18 @@
 # Fusion-Simulation
 
-Robot virtual simulation training and testing platform for **Apple Silicon**.
+面向 **Apple Silicon** 的机器人虚拟仿真训练与测试平台。
 
-Uses PyBullet for physics simulation and delegates all neural network inference to [fusion-mlx](https://github.com/fusion-mlx) via HTTP API — **never imports torch, CUDA, or MLX directly**.
+使用 PyBullet 进行物理仿真，所有神经网络推理通过 [fusion-mlx](https://github.com/fusion-mlx) HTTP API 完成 —— **绝不直接导入 torch、CUDA 或 MLX**。
 
-> 📖 [中文文档](README_CN.md)
+> 📖 [English Documentation](README.md)
 
-## Architecture
+## 架构
 
-Six-layer architecture inspired by NVIDIA Isaac Sim:
+受 NVIDIA Isaac Sim 启发的六层架构：
 
 ```
 L1  Core        SimClock · ECS · EventBus · WorldState · SimulationKernel
-L2  Physics     PyBulletEngine (decoupled stepping)
+L2  Physics     PyBulletEngine (解耦步进)
 L3  Sensor      SensorManager · SensorRegistry · RGB/Depth/IMU/Contact
 L4  Agent       AgentManager · PolicyClient (fusion-mlx HTTP) · PromptScheduler · Decimation
 L5  Train/Eval  BCTrainer · SimulationEvaluator · FusionGymEnv
@@ -21,7 +21,7 @@ L6  Service     gRPC + JSON-RPC HTTP fallback · MetricsServer · GatewayClient
 
 ### SimulationKernel
 
-Central scheduler integrating all subsystems:
+集成所有子系统的核心调度器：
 
 ```python
 from fusion_simulation.core.kernel import SimulationKernel, KernelConfig
@@ -33,15 +33,15 @@ print(state.sim_time, state.frame_count)
 kernel.close()
 ```
 
-### ECS (Entity-Component-System)
+### ECS (实体-组件-系统)
 
-All simulation entities are component-based:
+所有仿真实体均基于组件：
 
-- **Transform** — position, orientation
-- **RigidBody** — mass, friction
-- **Articulation** — joint positions/velocities
-- **AgentBind** — bound agent name
-- **CameraSensor / IMUSensor** — sensor metadata
+- **Transform** — 位置、朝向
+- **RigidBody** — 质量、摩擦力
+- **Articulation** — 关节位置/速度
+- **AgentBind** — 绑定的智能体名称
+- **CameraSensor / IMUSensor** — 传感器元数据
 
 ```python
 from fusion_simulation.core.ecs import EntityManager, Transform, RigidBody
@@ -54,7 +54,7 @@ mgr.add_component(eid, RigidBody(mass=1.0))
 
 ### SensorManager
 
-Registry-based sensor management with update rate control:
+基于注册表的传感器管理，支持更新频率控制：
 
 ```python
 from fusion_simulation.sensor.manager import SensorManager
@@ -67,7 +67,7 @@ observations = sm.get_observations()
 
 ### AgentManager + PolicyClient
 
-Multi-agent management with decimation and fusion-mlx inference:
+多智能体管理，支持降采样和 fusion-mlx 推理：
 
 ```python
 from fusion_simulation.agent.manager import AgentManager
@@ -87,7 +87,7 @@ am.add_agent(
 
 ### FusionGymEnv
 
-Manager-Based RL environment aligned with Isaac Lab architecture:
+对齐 Isaac Lab 架构的 Manager-Based RL 环境：
 
 ```python
 import numpy as np
@@ -104,15 +104,15 @@ for _ in range(100):
 env.close()
 ```
 
-Four managers for clean MDP decomposition:
-- **ObservationManager** — group observations (policy/critic), noise, history
-- **ActionManager** — process + apply separation, decimation-aware, scale/clip
-- **RewardManager** — composable reward functions, cumulative tracking
-- **TerminationManager** — termination + timeout conditions
+四个管理器实现清晰的 MDP 分解：
+- **ObservationManager** — 分组观测（策略/评论）、噪声、历史
+- **ActionManager** — 处理 + 应用分离、降采样感知、缩放/裁剪
+- **RewardManager** — 可组合奖励函数、累积跟踪
+- **TerminationManager** — 终止 + 超时条件
 
 ### SimulationServer
 
-gRPC service with HTTP JSON-RPC fallback, MetricsServer, and Fusion-Gateway integration:
+gRPC 服务 + HTTP JSON-RPC 回退、MetricsServer、Fusion-Gateway 集成：
 
 ```python
 from fusion_simulation.service.server import SimulationServer
@@ -131,13 +131,13 @@ server.handle_request("close", {})
 
 ### MetricsServer + GatewayClient
 
-- **MetricsServer** exposes `/health` (JSON) and `/metrics` (Prometheus text format) on port 11456
-- **GatewayClient** registers with Fusion-Gateway at :11432, sends heartbeats, deregisters on shutdown
-- **MetricsCollector** provides thread-safe counters, gauges, and histograms
+- **MetricsServer** 在端口 11456 暴露 `/health`（JSON）和 `/metrics`（Prometheus 文本格式）
+- **GatewayClient** 向 Fusion-Gateway（:11432）注册、发送心跳、关闭时注销
+- **MetricsCollector** 提供线程安全的计数器、仪表盘和直方图
 
-## Installation
+## 安装
 
-### From Source
+### 从源码安装
 
 ```bash
 git clone <repo-url>
@@ -147,7 +147,7 @@ source .venv/bin/activate
 pip install -e ".[test]"
 ```
 
-### Via Homebrew (Apple Silicon)
+### 通过 Homebrew (Apple Silicon)
 
 ```bash
 brew install --formula homebrew/fusion-simulation.rb
@@ -156,123 +156,123 @@ brew install --formula homebrew/fusion-simulation.rb
 ## CLI
 
 ```bash
-# Version
+# 版本
 fusion-sim version
 
-# Environment
+# 环境
 fusion-sim env init --engine=lerobot --headless
 
-# Scenes
+# 场景
 fusion-sim scene list
 fusion-sim scene load --name=pick
 
-# Agents
+# 智能体
 fusion-sim agent spawn --name=robot0 --role=robot --action-dim=6
 fusion-sim agent list
 fusion-sim agent destroy --name=robot0
 
-# Sensors
+# 传感器
 fusion-sim sensor add --type=rgb_camera --name=wrist_cam
 fusion-sim sensor add --type=imu --name=imu0
 fusion-sim sensor list
 
-# Snapshots
+# 快照
 fusion-sim snapshot save --name=checkpoint_1
 fusion-sim snapshot restore --name=checkpoint_1
 
-# Dataset
+# 数据集
 fusion-sim dataset list
 fusion-sim dataset import --name=mydata --path=/path/to/data
 
-# Training
+# 训练
 fusion-sim train --dataset=mydata --model-name=policy --epochs=10
 fusion-sim train --dataset=mydata --use-kernel
 
-# Evaluation
+# 评估
 fusion-sim test --model=policy --engine=lerobot --episodes=5
 
-# Benchmark
+# 基准测试
 fusion-sim bench --model=policy --output=report.md
 
-# Service
+# 服务
 fusion-sim service start --port=11447 --metrics-port=11456 --gui
 fusion-sim service stop
 fusion-sim service health
 
-# Gateway
+# 网关
 fusion-sim gateway register --gateway-url=http://localhost:11432
 
-# Kernel direct
+# 内核直连
 fusion-sim kernel run --steps=100 --headless
 fusion-sim kernel status
 ```
 
-## Web Dashboard GUI
+## Web 仪表盘 GUI
 
-5-page Web Dashboard per PRD Section 7, served by FastAPI on port 11455:
+按 PRD 第 7 节实现的 5 页 Web 仪表盘，由 FastAPI 在端口 11455 提供服务：
 
 ```bash
 fusion-sim service start --gui --gui-port 11455
-# Open http://localhost:11455
+# 打开 http://localhost:11455
 ```
 
-| Page | Features |
-|------|----------|
-| Welcome | Env auto-detect (PyBullet/gRPC/MLX/Service), quick templates |
-| Workstation | 4-zone layout: sidebar + viewport + inspector + statusbar, transport controls, real-time metrics |
-| Agent Orchestration | Agent CRUD, prompt editor, role config |
-| Data & Recording | Snapshot save/restore, export buttons |
-| Settings | Kernel/AI/Service config, env check |
+| 页面 | 功能 |
+|------|------|
+| Welcome | 环境自动检测（PyBullet/gRPC/MLX/Service）、快速模板 |
+| Workstation | 4 区布局：侧边栏 + 视口 + 检查器 + 状态栏、传输控制、实时指标 |
+| Agent Orchestration | 智能体增删改查、提示词编辑器、角色配置 |
+| Data & Recording | 快照保存/恢复、导出按钮 |
+| Settings | 内核/AI/服务配置、环境检查 |
 
-API: REST (`/api/*`) + WebSocket (`/ws/events`) + static files.
+API：REST（`/api/*`）+ WebSocket（`/ws/events`）+ 静态文件。
 
-> **PRD Gap**: Current Web Dashboard is a V0.1 interim solution. PRD requires SwiftUI + Metal native client (V0.3). See `docs/gui-prd-gap-analysis.md` for full comparison.
+> **PRD 差距**：当前 Web 仪表盘为 V0.1 过渡方案。PRD 要求 SwiftUI + Metal 原生客户端（V0.3）。详见 `docs/gui-prd-gap-analysis.md`。
 
-## Testing
+## 测试
 
 ```bash
-# All tests
+# 全部测试
 pytest
 
-# Single file
+# 单个文件
 pytest tests/test_core.py
 pytest tests/test_new_arch.py
 pytest tests/test_e2e.py
 
-# E2E tests only (reliability, stability, GUI)
+# 仅 E2E 测试（可靠性、稳定性、GUI）
 pytest tests/test_e2e.py -v
 
-# With coverage
+# 带覆盖率
 pytest --cov=fusion_simulation --cov-report=term-missing
 ```
 
-### E2E Test Coverage
+### E2E 测试覆盖
 
-`tests/test_e2e.py` covers end-to-end reliability, stability, and GUI stability across 72 tests:
+`tests/test_e2e.py` 覆盖端到端可靠性、稳定性和 GUI 稳定性，共 72 个测试：
 
-| Category | Tests | Coverage |
-|----------|-------|----------|
-| Kernel Lifecycle | 8 | Full lifecycle (init→step→pause→resume→stop→close), repeated cycles, reset, snapshots |
-| Server RPC | 10 | All 12 RPC methods, unknown method error, health with/without kernel |
-| Metrics HTTP | 10 | /health + /metrics endpoints, Prometheus format, thread safety, real HTTP |
-| Gateway Client | 4 | Disabled gateway, unreachable gateway, health provider, close deregisters |
-| SimulationEnv | 5 | Init/step/reset/close, repeated cycles, scenes, no-init error |
-| FusionGymEnv | 6 | Reset/step/close, observation/action spaces, timeout, reward, termination |
-| Sensor+Agent Pipeline | 5 | Multi-sensor, multi-agent, enable/disable, full pipeline with events |
-| Stability/Stress | 7 | 10x cycles, 500 steps, concurrent RPC, 100 sensors, 50 agents, 1K entities, 10K events |
-| GUI Stability | 7 | Health endpoint structure, Prometheus format, 404, event streaming, server start/stop |
-| Gym Managers | 8 | ObservationManager, ActionManager, RewardManager, TerminationManager |
-| CLI | 4 | version, scene list, agent spawn, sensor add |
+| 类别 | 测试数 | 覆盖范围 |
+|------|--------|----------|
+| Kernel 生命周期 | 8 | 完整生命周期（init→step→pause→resume→stop→close）、重复循环、重置、快照 |
+| Server RPC | 10 | 全部 12 个 RPC 方法、未知方法错误、有无内核的健康检查 |
+| Metrics HTTP | 10 | /health + /metrics 端点、Prometheus 格式、线程安全、真实 HTTP |
+| Gateway Client | 4 | 禁用网关、不可达网关、健康提供者、关闭注销 |
+| SimulationEnv | 5 | Init/step/reset/close、重复循环、场景、未初始化错误 |
+| FusionGymEnv | 6 | Reset/step/close、观测/动作空间、超时、奖励、终止 |
+| Sensor+Agent 流水线 | 5 | 多传感器、多智能体、启用/禁用、带事件的完整流水线 |
+| 稳定性/压力 | 7 | 10x 循环、500 步、并发 RPC、100 传感器、50 智能体、1K 实体、10K 事件 |
+| GUI 稳定性 | 7 | 健康端点结构、Prometheus 格式、404、事件流、服务启停 |
+| Gym 管理器 | 8 | ObservationManager、ActionManager、RewardManager、TerminationManager |
+| CLI | 4 | version、scene list、agent spawn、sensor add |
 
-## Key Constraints
+## 关键约束
 
-- All model inference via fusion-mlx HTTP API (`http://localhost:11434/v1`)
-- No direct torch/CUDA/MLX imports
-- PyBullet optional — code handles `ImportError` gracefully
+- 所有模型推理通过 fusion-mlx HTTP API（`http://localhost:11434/v1`）
+- 禁止直接导入 torch/CUDA/MLX
+- PyBullet 可选 — 代码优雅处理 `ImportError`
 - Python ≥3.12
-- Default model: `qwen3.5-9b` via fusion-mlx
+- 默认模型：`qwen3.5-9b`（通过 fusion-mlx）
 
-## Project Structure
+## 项目结构
 
 ```
 fusion_simulation/
@@ -282,47 +282,47 @@ fusion_simulation/
 │   ├── event_bus.py
 │   ├── kernel.py
 │   └── world_state.py
-├── physics/        # L2: Physics engine abstraction
+├── physics/        # L2: 物理引擎抽象
 │   ├── base.py
 │   └── pybullet_engine.py
-├── sensor/         # L3: Sensor management
+├── sensor/         # L3: 传感器管理
 │   ├── base.py
 │   ├── manager.py
 │   └── rgb_camera.py
-├── agent/          # L4: Agent + Policy
+├── agent/          # L4: 智能体 + 策略
 │   ├── config.py
 │   ├── manager.py
 │   ├── policy.py
 │   └── scheduler.py
-├── sim/            # Backward-compat env wrapper
+├── sim/            # 向后兼容环境包装器
 │   ├── env.py
 │   └── scene.py
-├── train/          # L5: Training
+├── train/          # L5: 训练
 │   ├── trainer.py
 │   └── gym_env.py
-├── eval/           # L5: Evaluation
+├── eval/           # L5: 评估
 │   └── evaluator.py
-├── dataset/        # Dataset management
+├── dataset/        # 数据集管理
 │   └── manager.py
-├── service/        # L6: gRPC + HTTP service
+├── service/        # L6: gRPC + HTTP 服务
 │   ├── config.py
 │   ├── server.py
 │   ├── gateway_client.py
 │   ├── metrics_server.py
 │   └── proto/
-├── render/         # Render engine
+├── render/         # 渲染引擎
 │   ├── base.py
 │   └── pybullet_render.py
-├── gui/            # Web Dashboard (FastAPI + static HTML)
+├── gui/            # Web 仪表盘 (FastAPI + 静态 HTML)
 │   ├── __init__.py
 │   ├── app.py
 │   └── static/
 │       └── index.html
-├── api/            # REST API (placeholder)
-└── cli/            # Command-line interface
+├── api/            # REST API (预留)
+└── cli/            # 命令行接口
     └── __init__.py
 ```
 
-## License
+## 许可证
 
 MIT
