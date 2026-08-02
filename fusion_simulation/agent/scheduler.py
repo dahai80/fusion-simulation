@@ -67,30 +67,34 @@ class PromptScheduler:
         actions: dict[str, list[float]] = {}
         ready = self._get_ready_agents(sim_time)
         ready.sort(key=lambda e: e.priority, reverse=True)
-        for entry in ready[:self._max_concurrent]:
+        for entry in ready[: self._max_concurrent]:
             t0 = time.monotonic()
             try:
                 action = self._agent_manager.observe_act_loop(entry.agent_name)
                 latency_ms = (time.monotonic() - t0) * 1000.0
                 used_vision = self._has_vision(entry.agent_name)
                 actions[entry.agent_name] = action
-                self._record(ScheduleResult(
-                    agent_name=entry.agent_name,
-                    action=action,
-                    latency_ms=latency_ms,
-                    success=True,
-                    used_vision=used_vision,
-                ))
+                self._record(
+                    ScheduleResult(
+                        agent_name=entry.agent_name,
+                        action=action,
+                        latency_ms=latency_ms,
+                        success=True,
+                        used_vision=used_vision,
+                    )
+                )
                 entry.last_run = sim_time
             except Exception:
                 latency_ms = (time.monotonic() - t0) * 1000.0
-                self._record(ScheduleResult(
-                    agent_name=entry.agent_name,
-                    action=[],
-                    latency_ms=latency_ms,
-                    success=False,
-                    used_vision=False,
-                ))
+                self._record(
+                    ScheduleResult(
+                        agent_name=entry.agent_name,
+                        action=[],
+                        latency_ms=latency_ms,
+                        success=False,
+                        used_vision=False,
+                    )
+                )
                 logger.exception("PromptScheduler tick failed for agent %s", entry.agent_name)
         return actions
 
@@ -117,14 +121,19 @@ class PromptScheduler:
             sensor = self._sensor_manager.get_sensor(sname)
             if sensor is None:
                 continue
-            if sensor.entity_id and sensor.entity_id == agent.entity_id and hasattr(sensor, "rgb") and sensor.rgb is not None:
+            if (
+                sensor.entity_id
+                and sensor.entity_id == agent.entity_id
+                and hasattr(sensor, "rgb")
+                and sensor.rgb is not None
+            ):
                 return True
         return False
 
     def _record(self, result: ScheduleResult) -> None:
         self._history.append(result)
         if len(self._history) > self._max_history:
-            self._history = self._history[-self._max_history:]
+            self._history = self._history[-self._max_history :]
 
     def get_history(self, agent_name: str = "", last_n: int = 50) -> list[ScheduleResult]:
         hist = self._history

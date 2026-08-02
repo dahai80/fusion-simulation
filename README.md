@@ -72,13 +72,15 @@ from fusion_simulation.agent.manager import AgentManager
 from fusion_simulation.agent.config import AgentConfig, AgentRole
 
 am = AgentManager()
-am.add_agent(AgentConfig(
-    name="robot0",
-    role=AgentRole.ROBOT,
-    action_dim=6,
-    decimation=4,
-    policy_endpoint="http://localhost:11434/v1/chat/completions",
-))
+am.add_agent(
+    AgentConfig(
+        name="robot0",
+        role=AgentRole.ROBOT,
+        action_dim=6,
+        decimation=4,
+        policy_endpoint="http://localhost:11434/v1/chat/completions",
+    )
+)
 ```
 
 ### FusionGymEnv

@@ -32,7 +32,9 @@ class SimClock:
         self._paused: bool = False
         logger.info(
             "SimClock created: physics_dt=%.4f render_dt=%.4f max_step=%d",
-            physics_dt, render_dt, max_step,
+            physics_dt,
+            render_dt,
+            max_step,
         )
 
     @property

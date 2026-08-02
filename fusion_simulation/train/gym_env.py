@@ -19,9 +19,12 @@ class ObservationManager:
     _history_len: int
     _history: dict[str, list[np.ndarray]]
 
-    def __init__(self, groups: dict[str, list[str]] | None = None,
-                 noise_scale: dict[str, float] | None = None,
-                 history_len: int = 1):
+    def __init__(
+        self,
+        groups: dict[str, list[str]] | None = None,
+        noise_scale: dict[str, float] | None = None,
+        history_len: int = 1,
+    ):
         self._groups = groups or {"policy": []}
         self._noise_scale = noise_scale or {}
         self._history_len = history_len
@@ -47,7 +50,7 @@ class ObservationManager:
             if group_name in result:
                 self._history[group_name].append(result[group_name])
                 if len(self._history[group_name]) > self._history_len:
-                    self._history[group_name] = self._history[group_name][-self._history_len:]
+                    self._history[group_name] = self._history[group_name][-self._history_len :]
         return result
 
     def get_history(self, group: str) -> list[np.ndarray]:
@@ -63,10 +66,13 @@ class ActionManager:
     _action_lower: np.ndarray | None
     _action_upper: np.ndarray | None
 
-    def __init__(self, action_dim: int,
-                 action_scale: list[float] | None = None,
-                 action_lower: list[float] | None = None,
-                 action_upper: list[float] | None = None):
+    def __init__(
+        self,
+        action_dim: int,
+        action_scale: list[float] | None = None,
+        action_lower: list[float] | None = None,
+        action_upper: list[float] | None = None,
+    ):
         self._action_dim = action_dim
         self._pending_action = None
         self._action_scale = np.array(action_scale, dtype=np.float32) if action_scale else None
@@ -78,7 +84,7 @@ class ActionManager:
         if len(action) < self._action_dim:
             action = np.pad(action, (0, self._action_dim - len(action)))
         elif len(action) > self._action_dim:
-            action = action[:self._action_dim]
+            action = action[: self._action_dim]
         if self._action_scale is not None:
             action = action * self._action_scale
         if self._action_lower is not None:
@@ -176,19 +182,28 @@ class TerminationManager:
 class FusionGymEnv:
     is_vector_env: ClassVar[bool] = True
 
-    def __init__(self, agent_config: AgentConfig | None = None,
-                 decimation: int = 4,
-                 max_steps: int = 1000,
-                 headless: bool = True,
-                 physics_dt: float = 0.01):
+    def __init__(
+        self,
+        agent_config: AgentConfig | None = None,
+        decimation: int = 4,
+        max_steps: int = 1000,
+        headless: bool = True,
+        physics_dt: float = 0.01,
+    ):
         self._decimation = decimation
-        self._kernel = SimulationKernel(KernelConfig(
-            headless=headless, physics_dt=physics_dt, max_steps=max_steps,
-        ))
+        self._kernel = SimulationKernel(
+            KernelConfig(
+                headless=headless,
+                physics_dt=physics_dt,
+                max_steps=max_steps,
+            )
+        )
         self._sensor_mgr = SensorManager()
         self._agent_mgr = AgentManager()
         self._agent_config = agent_config or AgentConfig(
-            name="agent", role=AgentRole.ROBOT, action_dim=6,
+            name="agent",
+            role=AgentRole.ROBOT,
+            action_dim=6,
         )
         self._obs_mgr = ObservationManager(
             groups={"policy": self._agent_config.obs_keys} if self._agent_config.obs_keys else {"policy": []},

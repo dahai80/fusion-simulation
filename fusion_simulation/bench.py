@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 def bench_physics_step_frequency(physics_dt: float = 0.01, num_steps: int = 10000) -> dict:
     from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
+
     cfg = KernelConfig(headless=True, physics_dt=physics_dt)
     kernel = SimulationKernel(cfg)
     kernel.init()
@@ -35,6 +36,7 @@ def bench_rgb_sensor_latency(num_captures: int = 100) -> dict:
     from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
     from fusion_simulation.sensor.base import SensorConfig, SensorType
     from fusion_simulation.sensor.manager import SensorManager
+
     kernel = SimulationKernel(KernelConfig(headless=True))
     sm = SensorManager()
     kernel.init(sensor_manager=sm)
@@ -63,6 +65,7 @@ def bench_rgb_sensor_latency(num_captures: int = 100) -> dict:
 
 def bench_grpc_call_latency(num_calls: int = 1000) -> dict:
     from fusion_simulation.service.server import SimulationServer
+
     server = SimulationServer()
     server.handle_request("init", {})
     latencies = []
@@ -88,18 +91,22 @@ def bench_multi_agent_memory(num_agents: int = 5, num_steps: int = 1000) -> dict
     from fusion_simulation.agent.config import AgentConfig, AgentRole
     from fusion_simulation.agent.manager import AgentManager
     from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
+
     kernel = SimulationKernel(KernelConfig(headless=True))
     am = AgentManager()
     kernel.init(agent_manager=am)
     for i in range(num_agents):
-        am.add_agent(AgentConfig(
-            name=f"bot_{i}",
-            role=AgentRole.ROBOT,
-            action_dim=6,
-            decimation=4,
-        ))
+        am.add_agent(
+            AgentConfig(
+                name=f"bot_{i}",
+                role=AgentRole.ROBOT,
+                action_dim=6,
+                decimation=4,
+            )
+        )
     kernel.step(num_steps=num_steps)
     import resource
+
     rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 / 1024
     kernel.close()
     result = {
@@ -117,6 +124,7 @@ def bench_multi_agent_memory(num_agents: int = 5, num_steps: int = 1000) -> dict
 def bench_cold_start() -> dict:
     t0 = time.perf_counter()
     from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
+
     kernel = SimulationKernel(KernelConfig(headless=True))
     kernel.init()
     elapsed = time.perf_counter() - t0

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import sys
 import tempfile
@@ -10,15 +9,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
-from fusion_simulation.agent.config import AgentConfig, AgentRole
-from fusion_simulation.agent.manager import AgentHandle, AgentManager
+from fusion_simulation.agent.config import AgentConfig
+from fusion_simulation.agent.manager import AgentManager
 from fusion_simulation.agent.policy import PolicyClient
 from fusion_simulation.core.clock import SimClock, SimTime
 from fusion_simulation.core.ecs import (
-    Articulation, CameraSensor, Component, EntityId, EntityManager, IMUSensor,
-    RigidBody, Transform, _serialize_component, deserialize_component,
+    Articulation,
+    EntityId,
+    EntityManager,
+    RigidBody,
+    Transform,
+    deserialize_component,
 )
-from fusion_simulation.core.event_bus import Event, EventBus, EventKind
+from fusion_simulation.core.event_bus import EventBus, EventKind
 from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
 from fusion_simulation.core.world_state import EntitySnapshot, WorldState
 from fusion_simulation.dataset.manager import DatasetManager
@@ -27,22 +30,23 @@ from fusion_simulation.physics.base import BodyState, PhysicsConfig, PhysicsEngi
 from fusion_simulation.physics.pybullet_engine import PyBulletEngine
 from fusion_simulation.render.pybullet_render import PyBulletRender
 from fusion_simulation.sensor.base import SensorBase, SensorConfig, SensorType
-from fusion_simulation.sensor.manager import SensorManager, create_sensor
+from fusion_simulation.sensor.manager import SensorManager
 from fusion_simulation.sensor.rgb_camera import RgbCameraSensor
-from fusion_simulation.service.config import ServiceConfig
 from fusion_simulation.service.server import SimulationServer
-from fusion_simulation.sim.env import EnvConfig, EngineType, SimulationEnv
+from fusion_simulation.sim.env import EnvConfig, SimulationEnv
 from fusion_simulation.sim.scene import SceneAsset, SceneConfig, SceneResourceManager
 from fusion_simulation.sim.scene_formats.json_loader import JsonSceneLoader
 from fusion_simulation.sim.scene_formats.urdf_loader import UrdfLoader
 from fusion_simulation.train.gym_env import (
-    ActionManager, FusionGymEnv, ObservationManager, RewardManager,
+    ActionManager,
+    FusionGymEnv,
+    ObservationManager,
     TerminationManager,
 )
 from fusion_simulation.train.trainer import BCTrainer
 
-
 # ── PolicyClient Coverage ──
+
 
 class TestPolicyClientCoverage:
     def test_endpoint_property(self):
@@ -70,9 +74,7 @@ class TestPolicyClientCoverage:
     def test_predict_success(self):
         p = PolicyClient()
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "choices": [{"message": {"content": "[0.1, 0.2, 0.3]"}}]
-        }
+        mock_resp.json.return_value = {"choices": [{"message": {"content": "[0.1, 0.2, 0.3]"}}]}
         mock_resp.raise_for_status = MagicMock()
         with patch.object(p._client, "post", return_value=mock_resp):
             action = p.predict({"obs": 1.0}, action_dim=3)
@@ -130,6 +132,7 @@ class TestPolicyClientCoverage:
 
 
 # ── PyBulletEngine Coverage ──
+
 
 class TestPyBulletEngineCoverage:
     def test_init_already_initialized(self):
@@ -270,10 +273,10 @@ class TestPyBulletEngineCoverage:
                     with patch("pybullet.setRealTimeSimulation"):
                         with patch("pybullet.setPhysicsEngineParameter"):
                             eng.init(headless=True)
-                            with patch("pybullet.getBasePositionAndOrientation",
-                                       return_value=([0, 0, 0], [0, 0, 0, 1])):
-                                with patch("pybullet.getBaseVelocity",
-                                           return_value=([0, 0, 0], [0, 0, 0])):
+                            with patch(
+                                "pybullet.getBasePositionAndOrientation", return_value=([0, 0, 0], [0, 0, 0, 1])
+                            ):
+                                with patch("pybullet.getBaseVelocity", return_value=([0, 0, 0], [0, 0, 0])):
                                     with patch("pybullet.getNumJoints", return_value=0):
                                         state = eng.get_body_state(1)
                                         assert state.body_id == 1
@@ -286,13 +289,15 @@ class TestPyBulletEngineCoverage:
                     with patch("pybullet.setRealTimeSimulation"):
                         with patch("pybullet.setPhysicsEngineParameter"):
                             eng.init(headless=True)
-                            with patch("pybullet.getBasePositionAndOrientation",
-                                       return_value=([0, 0, 0], [0, 0, 0, 1])):
-                                with patch("pybullet.getBaseVelocity",
-                                           return_value=([0, 0, 0], [0, 0, 0])):
+                            with patch(
+                                "pybullet.getBasePositionAndOrientation", return_value=([0, 0, 0], [0, 0, 0, 1])
+                            ):
+                                with patch("pybullet.getBaseVelocity", return_value=([0, 0, 0], [0, 0, 0])):
                                     with patch("pybullet.getNumJoints", return_value=2):
-                                        with patch("pybullet.getJointStates",
-                                                   return_value=[(0.1, 0.2, 0, 0.3), (0.4, 0.5, 0, 0.6)]):
+                                        with patch(
+                                            "pybullet.getJointStates",
+                                            return_value=[(0.1, 0.2, 0, 0.3), (0.4, 0.5, 0, 0.6)],
+                                        ):
                                             state = eng.get_body_state(1)
                                             assert state.joint_positions == [0.1, 0.4]
 
@@ -304,8 +309,7 @@ class TestPyBulletEngineCoverage:
                     with patch("pybullet.setRealTimeSimulation"):
                         with patch("pybullet.setPhysicsEngineParameter"):
                             eng.init(headless=True)
-                            with patch("pybullet.getBasePositionAndOrientation",
-                                       side_effect=Exception("fail")):
+                            with patch("pybullet.getBasePositionAndOrientation", side_effect=Exception("fail")):
                                 state = eng.get_body_state(1)
                                 assert state.body_id == 1
                                 assert state.position == [0.0, 0.0, 0.0]
@@ -427,8 +431,7 @@ class TestPyBulletEngineCoverage:
                     with patch("pybullet.setRealTimeSimulation"):
                         with patch("pybullet.setPhysicsEngineParameter"):
                             eng.init(headless=True)
-                            with patch("pybullet.rayTest",
-                                       return_value=[(1, 0, 0.5, [1, 2, 3], [0, 0, 1])]):
+                            with patch("pybullet.rayTest", return_value=[(1, 0, 0.5, [1, 2, 3], [0, 0, 1])]):
                                 result = eng.ray_test([0, 0, 0], [1, 0, 0])
                                 assert result is not None
                                 assert result["object_id"] == 1
@@ -478,10 +481,12 @@ class TestPyBulletEngineCoverage:
                     with patch("pybullet.setRealTimeSimulation"):
                         with patch("pybullet.setPhysicsEngineParameter"):
                             eng.init(headless=True)
-                            with patch("pybullet.computeViewMatrixFromYawPitchRoll", return_value=[0]*16):
-                                with patch("pybullet.computeProjectionMatrixFOV", return_value=[0]*16):
-                                    with patch("pybullet.getCameraImage",
-                                               return_value=(640, 480, list(range(768)), [0.5]*120, [1]*120)):
+                            with patch("pybullet.computeViewMatrixFromYawPitchRoll", return_value=[0] * 16):
+                                with patch("pybullet.computeProjectionMatrixFOV", return_value=[0] * 16):
+                                    with patch(
+                                        "pybullet.getCameraImage",
+                                        return_value=(640, 480, list(range(768)), [0.5] * 120, [1] * 120),
+                                    ):
                                         with patch("pybullet.ER_BULLET_HARDWARE_OPENGL", 1):
                                             result = eng.get_camera_image(8, 10)
                                             assert result["width"] == 8
@@ -516,6 +521,7 @@ class TestPyBulletEngineCoverage:
 
 
 # ── PyBulletRender Coverage ──
+
 
 class TestPyBulletRenderCoverage:
     def test_capture_not_initialized(self):
@@ -569,6 +575,7 @@ class TestPyBulletRenderCoverage:
 
 
 # ── SimulationServer Coverage ──
+
 
 class TestSimulationServerCoverage:
     def test_kernel_property(self):
@@ -670,12 +677,16 @@ class TestSimulationServerCoverage:
 
 # ── Evaluator Coverage ──
 
+
 class TestEvaluatorCoverage:
     @pytest.mark.asyncio
     async def test_evaluate_normal(self):
         evaluator = SimulationEvaluator()
-        with patch.object(evaluator, "_run_episode",
-                          AsyncMock(return_value={"success": True, "latency_ms": 10.0, "trajectory_error": 0.1, "steps": 10})):
+        with patch.object(
+            evaluator,
+            "_run_episode",
+            AsyncMock(return_value={"success": True, "latency_ms": 10.0, "trajectory_error": 0.1, "steps": 10}),
+        ):
             result = await evaluator.evaluate("test", episodes=3)
             assert result.task_success_rate == 1.0
             assert result.total_episodes == 3
@@ -685,8 +696,11 @@ class TestEvaluatorCoverage:
         evaluator = SimulationEvaluator()
         kernel = MagicMock()
         kernel.agent_manager = None
-        with patch.object(evaluator, "_run_kernel_episode",
-                          AsyncMock(return_value={"success": True, "latency_ms": 5.0, "trajectory_error": 0.2, "steps": 100})):
+        with patch.object(
+            evaluator,
+            "_run_kernel_episode",
+            AsyncMock(return_value={"success": True, "latency_ms": 5.0, "trajectory_error": 0.2, "steps": 100}),
+        ):
             result = await evaluator.evaluate_with_kernel(kernel, episodes=2)
             assert result.task_success_rate == 1.0
 
@@ -696,8 +710,11 @@ class TestEvaluatorCoverage:
         kernel = MagicMock()
         mock_am = MagicMock()
         kernel.agent_manager = mock_am
-        with patch.object(evaluator, "_run_kernel_episode",
-                          AsyncMock(return_value={"success": True, "latency_ms": 5.0, "trajectory_error": 0.2, "steps": 50})):
+        with patch.object(
+            evaluator,
+            "_run_kernel_episode",
+            AsyncMock(return_value={"success": True, "latency_ms": 5.0, "trajectory_error": 0.2, "steps": 50}),
+        ):
             result = await evaluator.evaluate_with_kernel(kernel, agent_name="bot", episodes=2)
             mock_am.reset_agent.assert_called_with("bot")
 
@@ -707,8 +724,11 @@ class TestEvaluatorCoverage:
         kernel = MagicMock()
         mock_am = MagicMock()
         kernel.agent_manager = mock_am
-        with patch.object(evaluator, "_run_kernel_episode",
-                          AsyncMock(return_value={"success": False, "latency_ms": 0, "trajectory_error": 1.0, "steps": 0})):
+        with patch.object(
+            evaluator,
+            "_run_kernel_episode",
+            AsyncMock(return_value={"success": False, "latency_ms": 0, "trajectory_error": 1.0, "steps": 0}),
+        ):
             result = await evaluator.evaluate_with_kernel(kernel, episodes=1)
             mock_am.reset_all.assert_called()
 
@@ -750,19 +770,24 @@ class TestEvaluatorCoverage:
 
     def test_generate_report_markdown(self):
         evaluator = SimulationEvaluator()
-        result = EvalResult(task_success_rate=0.8, trajectory_error=0.1, inference_latency_ms=50.0, fps=30.0, total_episodes=10)
+        result = EvalResult(
+            task_success_rate=0.8, trajectory_error=0.1, inference_latency_ms=50.0, fps=30.0, total_episodes=10
+        )
         report = evaluator.generate_report(result)
         assert "80.0%" in report
 
     def test_generate_report_json(self):
         evaluator = SimulationEvaluator()
-        result = EvalResult(task_success_rate=0.8, trajectory_error=0.1, inference_latency_ms=50.0, fps=30.0, total_episodes=10)
+        result = EvalResult(
+            task_success_rate=0.8, trajectory_error=0.1, inference_latency_ms=50.0, fps=30.0, total_episodes=10
+        )
         report = evaluator.generate_report(result, fmt="json")
         data = json.loads(report)
         assert data["task_success_rate"] == 0.8
 
 
 # ── Scene Coverage ──
+
 
 class TestSceneCoverage:
     def test_load_scene_ground_plane_error(self):
@@ -792,11 +817,13 @@ class TestSceneCoverage:
         physics = MagicMock()
         physics.load_plane.return_value = 0
         srm = SceneResourceManager(ecs, physics)
-        result = srm.load_scene_from_dict({
-            "name": "test",
-            "ground_plane": True,
-            "assets": [],
-        })
+        result = srm.load_scene_from_dict(
+            {
+                "name": "test",
+                "ground_plane": True,
+                "assets": [],
+            }
+        )
         assert result["status"] == "loaded"
 
     def test_load_scene_from_file_not_found(self):
@@ -813,11 +840,15 @@ class TestSceneCoverage:
         srm = SceneResourceManager(ecs, physics)
         with tempfile.TemporaryDirectory() as tmpdir:
             scene_file = Path(tmpdir) / "test_scene.json"
-            scene_file.write_text(json.dumps({
-                "name": "file_scene",
-                "ground_plane": True,
-                "assets": [],
-            }))
+            scene_file.write_text(
+                json.dumps(
+                    {
+                        "name": "file_scene",
+                        "ground_plane": True,
+                        "assets": [],
+                    }
+                )
+            )
             result = srm.load_scene_from_file(str(scene_file))
             assert result["scene"] == "file_scene"
 
@@ -896,15 +927,20 @@ class TestSceneCoverage:
 
 # ── JsonSceneLoader Coverage ──
 
+
 class TestJsonSceneLoaderCoverage:
     def test_load_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             scene_file = Path(tmpdir) / "scene.json"
-            scene_file.write_text(json.dumps({
-                "name": "test_scene",
-                "description": "A test scene",
-                "assets": [{"asset_type": "urdf", "path": "robot.urdf", "name": "robot"}],
-            }))
+            scene_file.write_text(
+                json.dumps(
+                    {
+                        "name": "test_scene",
+                        "description": "A test scene",
+                        "assets": [{"asset_type": "urdf", "path": "robot.urdf", "name": "robot"}],
+                    }
+                )
+            )
             config = JsonSceneLoader.load(str(scene_file))
             assert config.name == "test_scene"
             assert len(config.assets) == 1
@@ -940,6 +976,7 @@ class TestJsonSceneLoaderCoverage:
 
 
 # ── UrdfLoader Coverage ──
+
 
 class TestUrdfLoaderCoverage:
     def test_parse_file_not_found(self):
@@ -1002,6 +1039,7 @@ class TestUrdfLoaderCoverage:
 
 # ── ECS Additional Coverage ──
 
+
 class TestECSCoverage:
     def test_entity_id_eq_non_entity(self):
         eid = EntityId()
@@ -1051,6 +1089,7 @@ class TestECSCoverage:
 
 # ── EventBus Additional Coverage ──
 
+
 class TestEventBusCoverage:
     def test_unsubscribe_not_found(self):
         bus = EventBus()
@@ -1093,6 +1132,7 @@ class TestEventBusCoverage:
 
 # ── WorldState Additional Coverage ──
 
+
 class TestWorldStateCoverage:
     def test_get_entity(self):
         ws = WorldState()
@@ -1121,6 +1161,7 @@ class TestWorldStateCoverage:
 
 
 # ── SensorBase Additional Coverage ──
+
 
 class TestSensorBaseCoverage:
     def test_config_property(self):
@@ -1180,6 +1221,7 @@ class TestSensorBaseCoverage:
 
 # ── SensorManager Additional Coverage ──
 
+
 class TestSensorManagerCoverage:
     def test_duplicate_sensor_replaces(self):
         sm = SensorManager()
@@ -1228,6 +1270,7 @@ class TestSensorManagerCoverage:
 
 # ── RgbCameraSensor Additional Coverage ──
 
+
 class TestRgbCameraSensorCoverage:
     def test_rgb_depth_seg_properties(self):
         cfg = SensorConfig(sensor_type=SensorType.RGB_CAMERA, name="cam")
@@ -1237,8 +1280,7 @@ class TestRgbCameraSensorCoverage:
         assert cam.segmentation is None
 
     def test_capture_with_physics_engine(self):
-        cfg = SensorConfig(sensor_type=SensorType.RGB_CAMERA, name="cam",
-                           params={"width": 32, "height": 24})
+        cfg = SensorConfig(sensor_type=SensorType.RGB_CAMERA, name="cam", params={"width": 32, "height": 24})
         cam = RgbCameraSensor(cfg)
         mock_physics = MagicMock()
         mock_physics.get_camera_image.return_value = {
@@ -1258,8 +1300,7 @@ class TestRgbCameraSensorCoverage:
         assert data["rgb"] is None
 
     def test_get_observation_with_shape(self):
-        cfg = SensorConfig(sensor_type=SensorType.RGB_CAMERA, name="cam",
-                           params={"width": 64, "height": 48})
+        cfg = SensorConfig(sensor_type=SensorType.RGB_CAMERA, name="cam", params={"width": 64, "height": 48})
         cam = RgbCameraSensor(cfg)
         obs = cam.get_observation()
         assert obs["shape"]["width"] == 64
@@ -1273,6 +1314,7 @@ class TestRgbCameraSensorCoverage:
 
 
 # ── AgentManager Additional Coverage ──
+
 
 class TestAgentManagerCoverage:
     def test_duplicate_agent_replaces(self):
@@ -1320,8 +1362,9 @@ class TestAgentManagerCoverage:
 
     def test_scale_action_with_bounds(self):
         am = AgentManager()
-        cfg = AgentConfig(name="bot", action_dim=2,
-                          action_scale=2.0, action_lower=[-1.0, -1.0], action_upper=[1.0, 1.0])
+        cfg = AgentConfig(
+            name="bot", action_dim=2, action_scale=2.0, action_lower=[-1.0, -1.0], action_upper=[1.0, 1.0]
+        )
         am.add_agent(cfg)
         scaled = am._scale_action([5.0, -5.0], cfg)
         assert scaled == [1.0, -1.0]
@@ -1348,6 +1391,7 @@ class TestAgentManagerCoverage:
 
 
 # ── Kernel Additional Coverage ──
+
 
 class TestKernelCoverage:
     def test_properties(self):
@@ -1476,54 +1520,70 @@ class TestKernelCoverage:
 
 # ── CLI Additional Coverage ──
 
+
 class TestCLICoverageAdditional:
     def test_no_command(self):
         from fusion_simulation.cli import main
-        with patch.object(sys, "argv", ["fusion"]):
-            with pytest.raises(SystemExit):
-                main()
+
+        with patch.object(sys, "argv", ["fusion"]), pytest.raises(SystemExit):
+            main()
 
     def test_scene_load(self):
         from fusion_simulation.cli import main
+
         with patch.object(sys, "argv", ["fusion", "scene", "load", "--name=default"]):
             with patch("fusion_simulation.core.kernel.SimulationKernel.init"):
                 with patch("fusion_simulation.core.kernel.SimulationKernel.close"):
-                    with patch("fusion_simulation.core.kernel.SimulationKernel.load_builtin_scene",
-                               return_value={"status": "loaded"}):
-                        with patch("fusion_simulation.core.kernel.SimulationKernel.status",
-                                   return_value={"initialized": True}):
+                    with patch(
+                        "fusion_simulation.core.kernel.SimulationKernel.load_builtin_scene",
+                        return_value={"status": "loaded"},
+                    ):
+                        with patch(
+                            "fusion_simulation.core.kernel.SimulationKernel.status", return_value={"initialized": True}
+                        ):
                             main()
 
     def test_train_with_kernel(self):
         from fusion_simulation.cli import main
+
         with patch.object(sys, "argv", ["fusion", "train", "--dataset=ds", "--use-kernel", "--epochs=1"]):
             with patch("fusion_simulation.dataset.manager.DatasetManager.get", return_value=None):
                 with patch("fusion_simulation.dataset.manager.DatasetManager.collect_samples", return_value=[]):
-                    with patch("fusion_simulation.train.trainer.BCTrainer.train_with_kernel",
-                               AsyncMock(return_value={"status": "completed", "final_loss": 0.5, "elapsed_seconds": 1.0})):
+                    with patch(
+                        "fusion_simulation.train.trainer.BCTrainer.train_with_kernel",
+                        AsyncMock(return_value={"status": "completed", "final_loss": 0.5, "elapsed_seconds": 1.0}),
+                    ):
                         with patch("fusion_simulation.train.trainer.BCTrainer.close", AsyncMock()):
                             main()
 
     def test_test_command(self):
         from fusion_simulation.cli import main
+
         with patch.object(sys, "argv", ["fusion", "test", "--model=test", "--episodes=1"]):
-            with patch("fusion_simulation.eval.evaluator.SimulationEvaluator.evaluate",
-                       AsyncMock(return_value=EvalResult(task_success_rate=1.0, total_episodes=1))):
-                with patch("fusion_simulation.eval.evaluator.SimulationEvaluator.generate_report",
-                           return_value="report"):
+            with patch(
+                "fusion_simulation.eval.evaluator.SimulationEvaluator.evaluate",
+                AsyncMock(return_value=EvalResult(task_success_rate=1.0, total_episodes=1)),
+            ):
+                with patch(
+                    "fusion_simulation.eval.evaluator.SimulationEvaluator.generate_report", return_value="report"
+                ):
                     main()
 
     def test_bench_command(self):
         from fusion_simulation.cli import main
+
         with patch.object(sys, "argv", ["fusion", "bench", "--model=test", "--output=/tmp/report.md"]):
-            with patch("fusion_simulation.eval.evaluator.SimulationEvaluator.evaluate",
-                       AsyncMock(return_value=EvalResult())):
-                with patch("fusion_simulation.eval.evaluator.SimulationEvaluator.generate_report",
-                           return_value="report"):
+            with patch(
+                "fusion_simulation.eval.evaluator.SimulationEvaluator.evaluate", AsyncMock(return_value=EvalResult())
+            ):
+                with patch(
+                    "fusion_simulation.eval.evaluator.SimulationEvaluator.generate_report", return_value="report"
+                ):
                     main()
 
     def test_kernel_run(self):
         from fusion_simulation.cli import main
+
         mock_kernel = MagicMock()
         mock_kernel.step.return_value = SimTime(sim_time=0.05, frame_count=5)
         mock_kernel.status.return_value = {"initialized": True}
@@ -1533,11 +1593,13 @@ class TestCLICoverageAdditional:
 
     def test_kernel_status(self):
         from fusion_simulation.cli import main
+
         with patch.object(sys, "argv", ["fusion", "kernel", "status"]):
             main()
 
     def test_service_start(self):
         from fusion_simulation.cli import main
+
         with patch.object(sys, "argv", ["fusion", "service", "start", "--headless"]):
             with patch("fusion_simulation.service.server.SimulationServer.start"):
                 with patch("fusion_simulation.service.server.SimulationServer.wait_for_termination"):
@@ -1546,6 +1608,7 @@ class TestCLICoverageAdditional:
 
 
 # ── Trainer Coverage ──
+
 
 class TestTrainerCoverage:
     @pytest.mark.asyncio
@@ -1585,6 +1648,7 @@ class TestTrainerCoverage:
 
 # ── SimClock Additional Coverage ──
 
+
 class TestSimClockCoverage:
     def test_physics_dt_property(self):
         c = SimClock(physics_dt=0.005)
@@ -1619,6 +1683,7 @@ class TestSimClockCoverage:
 
 
 # ── GymEnv Additional Coverage ──
+
 
 class TestGymEnvCoverage:
     def test_observation_with_groups(self):
@@ -1657,6 +1722,7 @@ class TestGymEnvCoverage:
 
 
 # ── SimulationEnv Additional Coverage ──
+
 
 class TestSimEnvCoverage:
     def test_step_kernel(self):
@@ -1703,6 +1769,7 @@ class TestSimEnvCoverage:
 
 # ── DatasetManager Additional Coverage ──
 
+
 class TestDatasetManagerCoverage:
     def test_load_index_bad_json(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1730,6 +1797,7 @@ class TestDatasetManagerCoverage:
 
 
 # ── Remaining Gap Coverage ──
+
 
 class TestRemainingGaps:
     def test_agent_manager_reset_agent(self):
@@ -1778,16 +1846,20 @@ class TestRemainingGaps:
 
     def test_cli_print_help(self):
         from fusion_simulation.cli import main
+
         with patch.object(sys, "argv", ["fusion", "unknown_cmd"]):
             with pytest.raises(SystemExit):
                 main()
 
     def test_cli_service_start_keyboard_interrupt(self):
         from fusion_simulation.cli import main
+
         with patch.object(sys, "argv", ["fusion", "service", "start"]):
             with patch("fusion_simulation.service.server.SimulationServer.start"):
-                with patch("fusion_simulation.service.server.SimulationServer.wait_for_termination",
-                           side_effect=KeyboardInterrupt):
+                with patch(
+                    "fusion_simulation.service.server.SimulationServer.wait_for_termination",
+                    side_effect=KeyboardInterrupt,
+                ):
                     with patch("fusion_simulation.service.server.SimulationServer.stop"):
                         main()
 
@@ -1797,8 +1869,9 @@ class TestRemainingGaps:
         physics.load_plane.return_value = 0
         physics.load_urdf.return_value = 1
         srm = SceneResourceManager(ecs, physics)
-        cfg = SceneConfig(name="test", ground_plane=True,
-                          assets=[SceneAsset(asset_type="urdf", path="r.urdf", name="robot")])
+        cfg = SceneConfig(
+            name="test", ground_plane=True, assets=[SceneAsset(asset_type="urdf", path="r.urdf", name="robot")]
+        )
         srm.load_scene(cfg)
         physics.remove_body = MagicMock()
         srm.unload_all()
@@ -1884,10 +1957,11 @@ class TestRemainingGaps:
                     with patch("pybullet.setRealTimeSimulation"):
                         with patch("pybullet.setPhysicsEngineParameter"):
                             eng.init(headless=True)
-                            with patch("pybullet.computeViewMatrixFromYawPitchRoll", return_value=[0]*16):
-                                with patch("pybullet.computeProjectionMatrixFOV", return_value=[0]*16):
-                                    with patch("pybullet.getCameraImage",
-                                               return_value=(w, h, rgb_data, depth_data, seg_data)):
+                            with patch("pybullet.computeViewMatrixFromYawPitchRoll", return_value=[0] * 16):
+                                with patch("pybullet.computeProjectionMatrixFOV", return_value=[0] * 16):
+                                    with patch(
+                                        "pybullet.getCameraImage", return_value=(w, h, rgb_data, depth_data, seg_data)
+                                    ):
                                         with patch("pybullet.ER_BULLET_HARDWARE_OPENGL", 1):
                                             result = eng.get_camera_image(w, h)
                                             assert result["rgb"].shape == (h, w, 3)
@@ -1895,20 +1969,27 @@ class TestRemainingGaps:
 
     def test_render_base_concrete(self):
         from fusion_simulation.render.base import RenderConfig, RenderEngine
+
         class TestRender(RenderEngine):
             def __init__(self):
                 self._init = False
+
             def init(self, config=None):
                 self._init = True
+
             def render(self):
                 pass
+
             def capture_camera(self, **kwargs):
                 return {}
+
             def close(self):
                 self._init = False
+
             @property
             def is_initialized(self):
                 return self._init
+
         r = TestRender()
         r.init()
         assert r.is_initialized
@@ -1917,41 +1998,56 @@ class TestRemainingGaps:
         r.close()
 
     def test_physics_base_concrete(self):
-        from fusion_simulation.physics.base import PhysicsConfig, PhysicsEngine
         class TestPhysics(PhysicsEngine):
             def __init__(self):
                 self._init = False
+
             def init(self, config=None, headless=True):
                 self._init = True
+
             def step(self):
                 pass
+
             def reset(self):
                 pass
+
             def close(self):
                 self._init = False
+
             def load_urdf(self, **kwargs):
                 return 0
+
             def load_plane(self, **kwargs):
                 return 0
+
             def remove_body(self, body_id):
                 pass
+
             def get_body_state(self, body_id):
                 return BodyState(body_id=body_id)
+
             def set_body_position(self, **kwargs):
                 pass
+
             def apply_force(self, **kwargs):
                 pass
+
             def apply_joint_action(self, **kwargs):
                 pass
+
             def get_joint_info(self, body_id):
                 return []
+
             def ray_test(self, **kwargs):
                 return None
+
             def get_contact_points(self, body_id):
                 return []
+
             @property
             def is_initialized(self):
                 return self._init
+
         p = TestPhysics()
         p.init()
         assert p.is_initialized
@@ -1978,7 +2074,7 @@ class TestRemainingGaps:
 
     def test_gym_env_termination_fn_exception(self):
         tm = TerminationManager()
-        tm.add_termination_fn("bad", lambda obs, info: 1/0)
+        tm.add_termination_fn("bad", lambda obs, info: 1 / 0)
         assert tm.compute_terminated({}, {}) is False
 
     def test_gym_env_compute_time_out_with_fn(self):
@@ -1988,7 +2084,7 @@ class TestRemainingGaps:
 
     def test_gym_env_compute_time_out_fn_exception(self):
         tm = TerminationManager(max_steps=100)
-        tm._timeout_fn = lambda: 1/0
+        tm._timeout_fn = lambda: 1 / 0
         assert tm.compute_time_out() is False
 
     def test_gym_env_reset_with_seed(self):
