@@ -1,4 +1,4 @@
-# MetricsServer: HTTP server exposing /health and /metrics (Prometheus format) on port 8081.
+# MetricsServer: HTTP server exposing /health and /metrics (Prometheus format) on port 11456.
 # Called by: SimulationServer.start() starts metrics server.
 # Affects API: MetricsServer, MetricsCollector.
 # Data schemas: MetricsConfig(host, port), metric counters/gauges/histograms.
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MetricsConfig:
     host: str = "0.0.0.0"
-    port: int = 8081
+    port: int = 11456
 
 
 class MetricsCollector:

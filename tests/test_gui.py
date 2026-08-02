@@ -35,10 +35,10 @@ class TestGUIConfig:
 
         cfg = GUIConfig()
         assert cfg.host == "0.0.0.0"
-        assert cfg.port == 8080
-        assert cfg.metrics_url == "http://127.0.0.1:8081"
+        assert cfg.port == 11455
+        assert cfg.metrics_url == "http://127.0.0.1:11456"
         assert cfg.grpc_host == "0.0.0.0"
-        assert cfg.grpc_port == 50051
+        assert cfg.grpc_port == 11447
 
 
 class TestRESTEndpoints:

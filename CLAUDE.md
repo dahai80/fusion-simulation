@@ -38,7 +38,7 @@ python -m fusion_simulation.cli dataset import --name=mydata --path=/path/to/dat
 python -m fusion_simulation.cli train --dataset=mydata --model-name=policy --epochs=10
 python -m fusion_simulation.cli test --model=policy --engine=lerobot --episodes=5
 python -m fusion_simulation.cli bench --model=policy --output=report.md
-python -m fusion_simulation.cli service start --port=50051 --metrics-port=8081
+python -m fusion_simulation.cli service start --port=11447 --metrics-port=11456
 python -m fusion_simulation.cli service health
 python -m fusion_simulation.cli gateway register --gateway-url=http://localhost:11432
 ```

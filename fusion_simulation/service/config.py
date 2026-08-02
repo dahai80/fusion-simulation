@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ServiceConfig:
     host: str = "0.0.0.0"
-    port: int = 50051
+    port: int = 11447
     max_workers: int = 4
     use_ssl: bool = False
     cert_path: str = ""
