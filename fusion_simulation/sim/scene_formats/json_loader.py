@@ -23,14 +23,16 @@ class JsonSceneLoader:
     def from_dict(data: dict[str, Any]) -> SceneConfig:
         assets = []
         for a in data.get("assets", []):
-            assets.append(SceneAsset(
-                asset_type=a.get("asset_type", "urdf"),
-                path=a.get("path", ""),
-                position=a.get("position", [0.0, 0.0, 0.0]),
-                orientation=a.get("orientation", [0.0, 0.0, 0.0, 1.0]),
-                fixed_base=a.get("fixed_base", False),
-                name=a.get("name", ""),
-            ))
+            assets.append(
+                SceneAsset(
+                    asset_type=a.get("asset_type", "urdf"),
+                    path=a.get("path", ""),
+                    position=a.get("position", [0.0, 0.0, 0.0]),
+                    orientation=a.get("orientation", [0.0, 0.0, 0.0, 1.0]),
+                    fixed_base=a.get("fixed_base", False),
+                    name=a.get("name", ""),
+                )
+            )
         config = SceneConfig(
             name=data.get("name", "unnamed"),
             description=data.get("description", ""),

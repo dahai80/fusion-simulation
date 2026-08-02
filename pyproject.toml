@@ -26,6 +26,43 @@ test = [
 [project.scripts]
 fusion-sim = "fusion_simulation.cli:main"
 
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+exclude = [
+    "fusion_simulation/service/proto/simulation_pb2.py",
+    "fusion_simulation/service/proto/simulation_pb2_grpc.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "PERF", "RUF"]
+ignore = [
+    "BLE001",
+    "SIM117",
+    "RUF059",
+    "S110",
+    "B017",
+    "E501",
+    "UP042",
+    "B007",
+    "B905",
+    "PERF401",
+    "PERF102",
+    "SIM102",
+    "SIM103",
+    "SIM105",
+    "SIM108",
+    "SIM110",
+    "RUF002",
+    "RUF006",
+    "F841",
+    "E402",
+    "E731",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["fusion_simulation"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

@@ -119,23 +119,38 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
         srv = app.state.sim_server
         if srv is None:
             return JSONResponse({"error": "no_server"}, status_code=503)
-        result = srv.handle_request("add_sensor", {
-            "type": type, "name": name, "entity_id": entity_id,
-        })
+        result = srv.handle_request(
+            "add_sensor",
+            {
+                "type": type,
+                "name": name,
+                "entity_id": entity_id,
+            },
+        )
         await _broadcast(app, result)
         return JSONResponse(result)
 
     @app.post("/api/add_agent")
-    async def api_add_agent(name: str = "agent0", role: str = "robot",
-                            action_dim: int = 6, entity_id: str = "",
-                            model_name: str = "qwen3.5-9b"):
+    async def api_add_agent(
+        name: str = "agent0",
+        role: str = "robot",
+        action_dim: int = 6,
+        entity_id: str = "",
+        model_name: str = "qwen3.5-9b",
+    ):
         srv = app.state.sim_server
         if srv is None:
             return JSONResponse({"error": "no_server"}, status_code=503)
-        result = srv.handle_request("add_agent", {
-            "name": name, "role": role, "action_dim": action_dim,
-            "entity_id": entity_id, "model_name": model_name,
-        })
+        result = srv.handle_request(
+            "add_agent",
+            {
+                "name": name,
+                "role": role,
+                "action_dim": action_dim,
+                "entity_id": entity_id,
+                "model_name": model_name,
+            },
+        )
         await _broadcast(app, result)
         return JSONResponse(result)
 
@@ -149,6 +164,7 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
     @app.get("/api/metrics")
     async def api_metrics():
         import httpx
+
         url = cfg.metrics_url.rstrip("/") + "/metrics"
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
@@ -164,16 +180,19 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
         checks = {}
         try:
             import pybullet
+
             checks["pybullet"] = {"available": True, "version": getattr(pybullet, "__version__", "unknown")}
         except ImportError:
             checks["pybullet"] = {"available": False}
         try:
             import grpc
+
             checks["grpc"] = {"available": True, "version": getattr(grpc, "__version__", "unknown")}
         except ImportError:
             checks["grpc"] = {"available": False}
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=2.0) as client:
                 resp = await client.get("http://127.0.0.1:11434/v1/models")
                 checks["fusion_mlx"] = {"available": resp.status_code == 200}
@@ -181,6 +200,7 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
             checks["fusion_mlx"] = {"available": False}
         try:
             import httpx
+
             metrics_port = cfg.metrics_url.split(":")[-1]
             async with httpx.AsyncClient(timeout=2.0) as client:
                 resp = await client.get(f"http://127.0.0.1:{metrics_port}/health")

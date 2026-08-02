@@ -168,17 +168,11 @@ class EntityManager:
         comps = self._entities[entity_id]
         return {
             "entity_id": str(entity_id),
-            "components": {
-                ct.__name__: _serialize_component(c) for ct, c in comps.items()
-            },
+            "components": {ct.__name__: _serialize_component(c) for ct, c in comps.items()},
         }
 
     def serialize_all(self) -> list[dict[str, Any]]:
-        return [
-            self.serialize_entity(eid)
-            for eid in self._entities
-            if self.serialize_entity(eid) is not None
-        ]
+        return [self.serialize_entity(eid) for eid in self._entities if self.serialize_entity(eid) is not None]
 
 
 def _serialize_component(comp: Component) -> dict[str, Any]:

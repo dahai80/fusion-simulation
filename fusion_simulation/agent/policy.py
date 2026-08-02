@@ -59,8 +59,14 @@ class PolicyClient:
             payload = {
                 "model": self._model_name,
                 "messages": [
-                    {"role": "system", "content": "You are a robot control policy. Given observations, output a JSON array of action values."},
-                    {"role": "user", "content": f"Observations: {obs_str}\nOutput action array of {action_dim} values as JSON."},
+                    {
+                        "role": "system",
+                        "content": "You are a robot control policy. Given observations, output a JSON array of action values.",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Observations: {obs_str}\nOutput action array of {action_dim} values as JSON.",
+                    },
                 ],
                 "temperature": 0.1,
                 "max_tokens": 256,
@@ -94,18 +100,25 @@ class PolicyClient:
             if prompt:
                 content_parts.append({"type": "text", "text": prompt})
             else:
-                content_parts.append({
-                    "type": "text",
-                    "text": f"You are a robot control policy. Analyze this camera image and output a JSON array of {action_dim} action values.",
-                })
-            content_parts.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{image_b64}"},
-            })
+                content_parts.append(
+                    {
+                        "type": "text",
+                        "text": f"You are a robot control policy. Analyze this camera image and output a JSON array of {action_dim} action values.",
+                    }
+                )
+            content_parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                }
+            )
             payload = {
                 "model": self._model_name,
                 "messages": [
-                    {"role": "system", "content": "You are a vision-based robot control policy. Analyze the image and output action values."},
+                    {
+                        "role": "system",
+                        "content": "You are a vision-based robot control policy. Analyze the image and output action values.",
+                    },
                     {"role": "user", "content": content_parts},
                 ],
                 "temperature": 0.1,
@@ -142,14 +155,18 @@ class PolicyClient:
             if prompt:
                 content_parts.append({"type": "text", "text": prompt})
             else:
-                content_parts.append({
-                    "type": "text",
-                    "text": f"You are a robot control policy. Analyze this camera image and output a JSON array of {action_dim} action values.",
-                })
-            content_parts.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{image_b64}"},
-            })
+                content_parts.append(
+                    {
+                        "type": "text",
+                        "text": f"You are a robot control policy. Analyze this camera image and output a JSON array of {action_dim} action values.",
+                    }
+                )
+            content_parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                }
+            )
             payload = {
                 "model": self._model_name,
                 "messages": [
@@ -183,8 +200,10 @@ class PolicyClient:
             return base64.b64encode(image).decode("ascii")
         try:
             import numpy as np
+
             if isinstance(image, np.ndarray):
                 from PIL import Image as PILImage
+
                 pil_img = PILImage.fromarray(image)
                 buf = io.BytesIO()
                 pil_img.save(buf, format="PNG")
@@ -215,6 +234,7 @@ class PolicyClient:
         self._client.close()
         if self._async_client is not None:
             import asyncio
+
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():

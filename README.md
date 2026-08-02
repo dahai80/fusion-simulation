@@ -72,13 +72,15 @@ from fusion_simulation.agent.manager import AgentManager
 from fusion_simulation.agent.config import AgentConfig, AgentRole
 
 am = AgentManager()
-am.add_agent(AgentConfig(
-    name="robot0",
-    role=AgentRole.ROBOT,
-    action_dim=6,
-    decimation=4,
-    policy_endpoint="http://localhost:11434/v1/chat/completions",
-))
+am.add_agent(
+    AgentConfig(
+        name="robot0",
+        role=AgentRole.ROBOT,
+        action_dim=6,
+        decimation=4,
+        policy_endpoint="http://localhost:11434/v1/chat/completions",
+    )
+)
 ```
 
 ### FusionGymEnv
@@ -117,7 +119,7 @@ from fusion_simulation.service.metrics_server import MetricsConfig
 
 server = SimulationServer(
     gateway_config=GatewayConfig(gateway_url="http://localhost:11432", enabled=True),
-    metrics_config=MetricsConfig(port=8081),
+    metrics_config=MetricsConfig(port=11456),
 )
 server.handle_request("init", {})
 server.handle_request("step", {"num_steps": 10})
@@ -127,7 +129,7 @@ server.handle_request("close", {})
 
 ### MetricsServer + GatewayClient
 
-- **MetricsServer** exposes `/health` (JSON) and `/metrics` (Prometheus text format) on port 8081
+- **MetricsServer** exposes `/health` (JSON) and `/metrics` (Prometheus text format) on port 11456
 - **GatewayClient** registers with Fusion-Gateway at :11432, sends heartbeats, deregisters on shutdown
 - **MetricsCollector** provides thread-safe counters, gauges, and histograms
 
@@ -191,7 +193,7 @@ fusion-sim test --model=policy --engine=lerobot --episodes=5
 fusion-sim bench --model=policy --output=report.md
 
 # Service
-fusion-sim service start --port=50051 --metrics-port=8081 --gui
+fusion-sim service start --port=11447 --metrics-port=11456 --gui
 fusion-sim service stop
 fusion-sim service health
 
@@ -205,11 +207,11 @@ fusion-sim kernel status
 
 ## Web Dashboard GUI
 
-5-page Web Dashboard per PRD Section 7, served by FastAPI on port 8080:
+5-page Web Dashboard per PRD Section 7, served by FastAPI on port 11455:
 
 ```bash
-fusion-sim service start --gui --gui-port 8080
-# Open http://localhost:8080
+fusion-sim service start --gui --gui-port 11455
+# Open http://localhost:11455
 ```
 
 | Page | Features |

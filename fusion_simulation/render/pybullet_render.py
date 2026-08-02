@@ -40,10 +40,15 @@ class PyBulletRender(RenderEngine):
         w = width or self._config.width
         h = height or self._config.height
         return self._physics.get_camera_image(
-            width=w, height=h,
+            width=w,
+            height=h,
             target_position=target_position or [0.0, 0.0, 0.0],
-            distance=distance, yaw=yaw, pitch=pitch,
-            fov=self._config.fov, near=self._config.near, far=self._config.far,
+            distance=distance,
+            yaw=yaw,
+            pitch=pitch,
+            fov=self._config.fov,
+            near=self._config.near,
+            far=self._config.far,
         )
 
     def close(self) -> None:

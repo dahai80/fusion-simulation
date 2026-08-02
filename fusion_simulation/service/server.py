@@ -27,8 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 class SimulationServer:
-    def __init__(self, config: ServiceConfig | None = None, kernel_config: KernelConfig | None = None,
-                 gateway_config: GatewayConfig | None = None, metrics_config: MetricsConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: ServiceConfig | None = None,
+        kernel_config: KernelConfig | None = None,
+        gateway_config: GatewayConfig | None = None,
+        metrics_config: MetricsConfig | None = None,
+    ) -> None:
         self._config = config or ServiceConfig()
         self._kernel_config = kernel_config or KernelConfig()
         self._gateway_config = gateway_config
@@ -79,9 +84,10 @@ class SimulationServer:
             logger.warning("SimulationServer already running")
             return
         try:
+            import importlib.util as _ilu
+
             from grpc import server as grpc_server
 
-            import importlib.util as _ilu
             if _ilu.find_spec("fusion_simulation.service.proto.simulation_pb2") is not None:
                 from fusion_simulation.service.proto import (  # noqa: F401
                     simulation_pb2,
@@ -97,6 +103,7 @@ class SimulationServer:
             from fusion_simulation.service.proto.simulation_pb2_grpc import (
                 add_SimulationServiceServicer_to_server,
             )
+
             servicer = _SimulationServicer(self)
             add_SimulationServiceServicer_to_server(servicer, self._server)
             addr = f"{self._config.host}:{self._config.port}"
@@ -214,6 +221,7 @@ class SimulationServer:
         if self._sensor_manager is None:
             return {"error": "No sensor manager"}
         from fusion_simulation.sensor.base import SensorConfig, SensorType
+
         cfg = SensorConfig(
             sensor_type=SensorType(params.get("type", "rgb_camera")),
             name=params.get("name", ""),
@@ -228,6 +236,7 @@ class SimulationServer:
         if self._agent_manager is None:
             return {"error": "No agent manager"}
         from fusion_simulation.agent.config import AgentConfig, AgentRole
+
         cfg = AgentConfig(
             name=params.get("name", ""),
             role=AgentRole(params.get("role", "robot")),
@@ -302,7 +311,8 @@ class SimulationServer:
     def _start_metrics(self) -> None:
         self._metrics_collector = MetricsCollector()
         self._metrics_server = MetricsServer(
-            config=self._metrics_config, collector=self._metrics_collector,
+            config=self._metrics_config,
+            collector=self._metrics_collector,
         )
         self._metrics_server.set_health_provider(self.get_health)
         try:
@@ -342,12 +352,15 @@ try:
             self._server = server
 
         def Init(self, request, context):
-            resp = self._server.handle_request("init", {
-                "physics_dt": request.physics_dt,
-                "render_dt": request.render_dt,
-                "headless": request.headless,
-                "seed": request.seed,
-            })
+            resp = self._server.handle_request(
+                "init",
+                {
+                    "physics_dt": request.physics_dt,
+                    "render_dt": request.render_dt,
+                    "headless": request.headless,
+                    "seed": request.seed,
+                },
+            )
             return simulation_pb2.InitResponse(
                 initialized=resp.get("status") == "initialized",
                 sim_time=0.0,

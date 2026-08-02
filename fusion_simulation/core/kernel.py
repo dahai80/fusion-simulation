@@ -82,7 +82,8 @@ class SimulationKernel:
         self._scheduler: Any = None
         logger.info(
             "SimulationKernel created: dt=%.4f headless=%s",
-            self._config.physics_dt, self._config.headless,
+            self._config.physics_dt,
+            self._config.headless,
         )
 
     @property
@@ -166,17 +167,21 @@ class SimulationKernel:
             self._sensor_manager.set_physics_engine(self._physics)
         else:
             from fusion_simulation.sensor.manager import SensorManager
+
             self._sensor_manager = SensorManager(physics_engine=self._physics)
         if agent_manager is not None:
             self._agent_manager = agent_manager
         else:
             from fusion_simulation.agent.manager import AgentManager
+
             self._agent_manager = AgentManager(
-                ecs=self._ecs, sensor_manager=self._sensor_manager,
+                ecs=self._ecs,
+                sensor_manager=self._sensor_manager,
             )
         self._clock.start()
         if self._config.use_scheduler:
             from fusion_simulation.agent.scheduler import PromptScheduler
+
             self._scheduler = PromptScheduler(
                 agent_manager=self._agent_manager,
                 sensor_manager=self._sensor_manager,
@@ -399,8 +404,8 @@ class SimulationKernel:
     def _sync_scene_entities(self) -> None:
         if self._scene is None:
             return
-        loaded_entities = getattr(self._scene, '_loaded_entities', {})
-        loaded_bodies = getattr(self._scene, '_loaded_bodies', {})
+        loaded_entities = getattr(self._scene, "_loaded_entities", {})
+        loaded_bodies = getattr(self._scene, "_loaded_bodies", {})
         for name, eid in loaded_entities.items():
             for body_name, body_id in loaded_bodies.items():
                 if body_name == name:
@@ -408,7 +413,8 @@ class SimulationKernel:
                     break
         logger.debug(
             "Synced scene entities: %d entities, %d body mappings",
-            len(loaded_entities), len(self._body_entity_map),
+            len(loaded_entities),
+            len(self._body_entity_map),
         )
 
     def save_snapshot(self, name: str = "") -> str:

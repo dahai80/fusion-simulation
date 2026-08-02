@@ -28,12 +28,14 @@ class UrdfLoader:
             visual = link_elem.find("visual")
             collision = link_elem.find("collision")
             inertial = link_elem.find("inertial")
-            links.append({
-                "name": link_name,
-                "has_visual": visual is not None,
-                "has_collision": collision is not None,
-                "has_inertial": inertial is not None,
-            })
+            links.append(
+                {
+                    "name": link_name,
+                    "has_visual": visual is not None,
+                    "has_collision": collision is not None,
+                    "has_inertial": inertial is not None,
+                }
+            )
         for joint_elem in root.findall("joint"):
             joint_name = joint_elem.attrib.get("name", "")
             joint_type = joint_elem.attrib.get("type", "")
@@ -76,10 +78,12 @@ class UrdfLoader:
         info = UrdfLoader.parse(urdf_path)
         limits = []
         for j in info["joints"]:
-            limits.append({
-                "lower": j.get("lower", 0.0),
-                "upper": j.get("upper", 0.0),
-                "effort": j.get("effort", 0.0),
-                "velocity": j.get("velocity", 0.0),
-            })
+            limits.append(
+                {
+                    "lower": j.get("lower", 0.0),
+                    "upper": j.get("upper", 0.0),
+                    "effort": j.get("effort", 0.0),
+                    "velocity": j.get("velocity", 0.0),
+                }
+            )
         return limits
