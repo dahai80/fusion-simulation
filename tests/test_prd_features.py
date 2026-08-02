@@ -724,7 +724,7 @@ class TestCLIGateway:
         args = MagicMock()
         args.action = "register"
         args.gateway_url = "http://127.0.0.1:11432"
-        args.service_port = 50051
+        args.service_port = 11447
         args.api_key = ""
         with patch("httpx.post") as mock_post:
             mock_post.return_value = MagicMock(status_code=200, json=lambda: {"status": "ok"})
@@ -774,8 +774,8 @@ class TestCLIArgparse:
         args = MagicMock()
         args.action = "start"
         args.host = "0.0.0.0"
-        args.port = 50051
-        args.metrics_port = 8081
+        args.port = 11447
+        args.metrics_port = 11456
         args.headless = True
         args.gateway_url = ""
         with patch("fusion_simulation.cli._cmd_service_start") as mock_start:

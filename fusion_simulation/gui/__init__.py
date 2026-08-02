@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class GUIConfig:
     host: str = "0.0.0.0"
-    port: int = 8080
-    metrics_url: str = "http://127.0.0.1:8081"
+    port: int = 11455
+    metrics_url: str = "http://127.0.0.1:11456"
     grpc_host: str = "0.0.0.0"
-    grpc_port: int = 50051
+    grpc_port: int = 11447

@@ -21,8 +21,8 @@ class GatewayConfig:
     gateway_url: str = "http://127.0.0.1:11432"
     service_name: str = "fusion-simulation"
     service_host: str = "127.0.0.1"
-    service_port: int = 50051
-    metrics_port: int = 8081
+    service_port: int = 11447
+    metrics_port: int = 11456
     heartbeat_interval: float = 10.0
     api_key: str = ""
     enabled: bool = False
