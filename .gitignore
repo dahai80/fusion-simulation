@@ -19,3 +19,4 @@ htmlcov/
 *.json.gz
 .codegraph/
 CLAUDE.md
+docs/gui-prd-gap-analysis.md
