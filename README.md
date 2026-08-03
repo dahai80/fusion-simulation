@@ -11,12 +11,12 @@ Uses PyBullet for physics simulation and delegates all neural network inference 
 Six-layer architecture inspired by NVIDIA Isaac Sim:
 
 ```
-L1  Core        SimClock · ECS · EventBus · WorldState · SimulationKernel
-L2  Physics     PyBulletEngine (decoupled stepping)
-L3  Sensor      SensorManager · SensorRegistry · RGB/Depth/IMU/Contact
-L4  Agent       AgentManager · PolicyClient (fusion-mlx HTTP) · PromptScheduler · Decimation
-L5  Train/Eval  BCTrainer · SimulationEvaluator · FusionGymEnv
-L6  Service     gRPC + JSON-RPC HTTP fallback · MetricsServer · GatewayClient
+L1  Core        SimClock · ECS · EventBus · WorldState · SimulationKernel · FaultIsolation · Plugin · ResourceQuota
+L2  Physics     PyBulletEngine (decoupled stepping) · MuJoCoEngine (stub)
+L3  Sensor      SensorManager · SensorRegistry · RGB / Depth / IMU / Contact / Semantic
+L4  Agent       AgentManager · PolicyClient (fusion-mlx HTTP) · PromptScheduler · Decimation · JointController · TaskTemplates
+L5  Train/Eval  BCTrainer (data export) · SimulationEvaluator · FusionGymEnv
+L6  Service     gRPC + JSON-RPC · OpenAI-compatible REST API · MetricsServer · GatewayClient
 ```
 
 ### SimulationKernel
@@ -129,6 +129,20 @@ server.handle_request("status", {})
 server.handle_request("close", {})
 ```
 
+### OpenAI-Compatible REST API
+
+Exposes `/v1/models`, `/v1/chat/completions` (SSE streaming), `/v1/health` on port 11434 by default. Supports Bearer token auth and dispatches simulation commands from chat messages:
+
+```bash
+# List models
+curl http://localhost:11434/v1/models
+
+# Chat completion (dispatches simulation command)
+curl -X POST http://localhost:11434/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"fusion-sim","messages":[{"role":"user","content":"{\"command\":\"status\"}"}]}'
+```
+
 ### MetricsServer + GatewayClient
 
 - **MetricsServer** exposes `/health` (JSON) and `/metrics` (Prometheus text format) on port 11456
@@ -150,7 +164,7 @@ pip install -e ".[test]"
 ### Via Homebrew (Apple Silicon)
 
 ```bash
-brew install --formula homebrew/fusion-simulation.rb
+brew install --formula Formula/fusion-simulation.rb
 ```
 
 ## CLI
@@ -195,7 +209,7 @@ fusion-sim test --model=policy --engine=lerobot --episodes=5
 fusion-sim bench --model=policy --output=report.md
 
 # Service
-fusion-sim service start --port=11447 --metrics-port=11456 --gui
+fusion-sim service start --port=11447 --metrics-port=11456 --openai-api-port=11434 --gui
 fusion-sim service stop
 fusion-sim service health
 
@@ -226,8 +240,6 @@ fusion-sim service start --gui --gui-port 11455
 
 API: REST (`/api/*`) + WebSocket (`/ws/events`) + static files.
 
-> **PRD Gap**: Current Web Dashboard is a V0.1 interim solution. PRD requires SwiftUI + Metal native client (V0.3). See `docs/gui-prd-gap-analysis.md` for full comparison.
-
 ## Testing
 
 ```bash
@@ -244,6 +256,10 @@ pytest tests/test_e2e.py -v
 
 # With coverage
 pytest --cov=fusion_simulation --cov-report=term-missing
+
+# Lint
+ruff check .
+ruff format --check .
 ```
 
 ### E2E Test Coverage
@@ -276,53 +292,72 @@ pytest --cov=fusion_simulation --cov-report=term-missing
 
 ```
 fusion_simulation/
-├── core/           # L1: Kernel, Clock, ECS, EventBus, WorldState
+├── core/           # L1: Kernel, Clock, ECS, EventBus, WorldState, FaultIsolation, Plugin, ResourceQuota
 │   ├── clock.py
 │   ├── ecs.py
 │   ├── event_bus.py
+│   ├── fault.py
 │   ├── kernel.py
+│   ├── plugin.py
+│   ├── resource.py
 │   └── world_state.py
 ├── physics/        # L2: Physics engine abstraction
 │   ├── base.py
+│   ├── mujoco_engine.py
 │   └── pybullet_engine.py
 ├── sensor/         # L3: Sensor management
 │   ├── base.py
+│   ├── contact.py
+│   ├── depth_camera.py
+│   ├── imu.py
 │   ├── manager.py
-│   └── rgb_camera.py
+│   ├── rgb_camera.py
+│   └── semantic_camera.py
 ├── agent/          # L4: Agent + Policy
 │   ├── config.py
+│   ├── joint_controller.py
 │   ├── manager.py
 │   ├── policy.py
-│   └── scheduler.py
-├── sim/            # Backward-compat env wrapper
+│   ├── scheduler.py
+│   └── task_templates.py
+├── sim/            # Backward-compat env wrapper + scene formats
 │   ├── env.py
-│   └── scene.py
+│   ├── scene.py
+│   └── scene_formats/
+│       ├── json_loader.py
+│       └── urdf_loader.py
 ├── train/          # L5: Training
-│   ├── trainer.py
-│   └── gym_env.py
+│   ├── gym_env.py
+│   └── trainer.py
 ├── eval/           # L5: Evaluation
 │   └── evaluator.py
-├── dataset/        # Dataset management
+├── dataset/        # Dataset management + data collector
+│   ├── collector.py
 │   └── manager.py
-├── service/        # L6: gRPC + HTTP service
+├── service/        # L6: gRPC + HTTP + OpenAI API service
 │   ├── config.py
-│   ├── server.py
+│   ├── flatbuf/
+│   │   └── serializer.py
 │   ├── gateway_client.py
 │   ├── metrics_server.py
-│   └── proto/
+│   ├── openai_api.py
+│   ├── proto/
+│   │   ├── simulation_pb2.py
+│   │   └── simulation_pb2_grpc.py
+│   └── server.py
 ├── render/         # Render engine
 │   ├── base.py
 │   └── pybullet_render.py
 ├── gui/            # Web Dashboard (FastAPI + static HTML)
-│   ├── __init__.py
 │   ├── app.py
+│   ├── ecs_compat.py
 │   └── static/
 │       └── index.html
-├── api/            # REST API (placeholder)
+├── bench.py
 └── cli/            # Command-line interface
     └── __init__.py
 ```
 
 ## License
 
-MIT
+[Apache License 2.0](LICENSE)
