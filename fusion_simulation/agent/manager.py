@@ -77,10 +77,10 @@ class AgentManager:
         if config.name in self._agents:
             logger.warning("Agent already exists: %s, replacing", config.name)
             self.remove_agent(config.name)
-# Callers: server._rpc_add_agent -> AgentManager.add_agent
-# Affected API: PolicyClient now receives config.api_key
-# Data schemas: AgentConfig.api_key -> PolicyClient._headers
-# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试，确保系统可用"
+        # Callers: server._rpc_add_agent -> AgentManager.add_agent
+        # Affected API: PolicyClient now receives config.api_key
+        # Data schemas: AgentConfig.api_key -> PolicyClient._headers
+        # User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
         policy = PolicyClient(endpoint=config.policy_endpoint, model_name=config.model_name, api_key=config.api_key)
         handle = AgentHandle(config=config, policy=policy)
         self._agents[config.name] = handle

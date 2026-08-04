@@ -18,7 +18,7 @@ _REQUEST_TIMEOUT = 30.0
 # Callers: AgentManager.add_agent, server._rpc_add_agent
 # Affected API: PolicyClient.__init__(api_key), check_available/predict/infer_from_image* send Authorization
 # Data schemas: PolicyClient._headers = {"Authorization": "Bearer <key>"} when api_key set
-# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试，确保系统可用"
+# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
 class PolicyClient:
     def __init__(self, endpoint: str = _DEFAULT_ENDPOINT, model_name: str = "qwen3.5-9b", api_key: str = "") -> None:
         self._endpoint = endpoint
@@ -50,7 +50,9 @@ class PolicyClient:
 
     def check_available(self) -> bool:
         try:
-            resp = self._client.get(self._endpoint.replace("/v1/chat/completions", "/v1/models"), headers=self._headers, timeout=5.0)
+            resp = self._client.get(
+                self._endpoint.replace("/v1/chat/completions", "/v1/models"), headers=self._headers, timeout=5.0
+            )
             self._available = resp.status_code == 200
         except Exception:
             self._available = False

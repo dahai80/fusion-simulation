@@ -17,7 +17,7 @@ class AgentRole(str, Enum):
 # Callers: AgentManager.add_agent, server._rpc_add_agent, SimulationBridge(Swift)
 # Affected API: AgentConfig.api_key (new) -> PolicyClient Authorization header
 # Data schemas: AgentConfig gains api_key: str = "" (default empty = no auth)
-# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试，确保系统可用"
+# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
 @dataclass
 class AgentConfig:
     name: str = ""

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Callers: cli._cmd_service_start -> run_dashboard(server, GUIConfig); app.api_env_check
 # Affected API: GUIConfig gains mlx_url / mlx_api_key for authenticated env_check probe
 # Data schemas: GUIConfig(host, port, metrics_url, grpc_host, grpc_port, mlx_url, mlx_api_key)
-# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试，确保系统可用"
+# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
 class GUIConfig:
     host: str = "0.0.0.0"
     port: int = 11455

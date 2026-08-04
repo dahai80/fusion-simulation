@@ -190,10 +190,10 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
             checks["grpc"] = {"available": True, "version": getattr(grpc, "__version__", "unknown")}
         except ImportError:
             checks["grpc"] = {"available": False}
-# Callers: GET /api/env_check (fusion-studio SimulationBridge.envCheckRequest)
-# Affected API: env_check fusion_mlx probe now sends Authorization + uses cfg.mlx_url
-# Data schemas: fusion_mlx probe uses GUIConfig.mlx_url / mlx_api_key
-# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试，确保系统可用"
+        # Callers: GET /api/env_check (fusion-studio SimulationBridge.envCheckRequest)
+        # Affected API: env_check fusion_mlx probe now sends Authorization + uses cfg.mlx_url
+        # Data schemas: fusion_mlx probe uses GUIConfig.mlx_url / mlx_api_key
+        # User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
         try:
             import httpx
 
