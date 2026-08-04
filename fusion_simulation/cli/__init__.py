@@ -109,7 +109,13 @@ def main():
     svc_start.add_argument("--headless", action="store_true")
     svc_start.add_argument("--gateway-url", default="", help="Fusion-Gateway URL")
     svc_start.add_argument("--gui", action="store_true", help="Enable Web Dashboard GUI")
+# Callers: fusion-studio UpstreamServiceManager / user starts fusion-sim service
+# Affected API: service start gains --mlx-url / --api-key -> KernelConfig + GUIConfig
+# Data schemas: args.mlx_url / args.api_key threaded to kernel_config and gui_config
+# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试，确保系统可用"
     svc_start.add_argument("--gui-port", type=int, default=11455, help="Dashboard port (default: 11455)")
+    svc_start.add_argument("--mlx-url", default="http://localhost:11434/v1", help="fusion-mlx base URL")
+    svc_start.add_argument("--api-key", default="", help="fusion-mlx API key (Bearer auth)")
     svc_sub.add_parser("stop", help="Stop simulation server")
     svc_health = svc_sub.add_parser("health", help="Check service health")
     svc_health.add_argument("--url", default="http://127.0.0.1:11456", help="Metrics URL")
@@ -415,7 +421,7 @@ def _cmd_service_start(args):
     from fusion_simulation.service.server import SimulationServer
 
     svc_config = ServiceConfig(host=args.host, port=args.port)
-    kernel_config = KernelConfig(headless=args.headless)
+    kernel_config = KernelConfig(headless=args.headless, mlx_url=args.mlx_url, mlx_api_key=args.api_key)
     metrics_config = MetricsConfig(port=args.metrics_port)
     gateway_config = None
     if args.gateway_url:
@@ -433,7 +439,7 @@ def _cmd_service_start(args):
         from fusion_simulation.gui import GUIConfig
         from fusion_simulation.gui.app import run_dashboard
 
-        gui_config = GUIConfig(port=args.gui_port, grpc_host=args.host, grpc_port=args.port)
+        gui_config = GUIConfig(port=args.gui_port, grpc_host=args.host, grpc_port=args.port, mlx_url=args.mlx_url, mlx_api_key=args.api_key)
         print(f"Web Dashboard: http://0.0.0.0:{args.gui_port}")
         run_dashboard(server, gui_config)
     else:
