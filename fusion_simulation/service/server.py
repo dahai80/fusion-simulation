@@ -237,13 +237,19 @@ class SimulationServer:
             return {"error": "No agent manager"}
         from fusion_simulation.agent.config import AgentConfig, AgentRole
 
+        # Callers: gui.api_add_agent -> handle_request("add_agent") -> _rpc_add_agent
+        # Affected API: add_agent params gain optional api_key; falls back to kernel_config.mlx_api_key
+        # Data schemas: AgentConfig(api_key=...) -> PolicyClient Authorization header
+        # User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
         cfg = AgentConfig(
             name=params.get("name", ""),
             role=AgentRole(params.get("role", "robot")),
             entity_id=params.get("entity_id", ""),
             action_dim=params.get("action_dim", 0),
-            policy_endpoint=params.get("policy_endpoint", ""),
+            policy_endpoint=params.get("policy_endpoint", "")
+            or (self._kernel_config.mlx_url.rstrip("/") + "/chat/completions"),
             model_name=params.get("model_name", "qwen3.5-9b"),
+            api_key=params.get("api_key", "") or self._kernel_config.mlx_api_key,
         )
         self._agent_manager.add_agent(cfg)
         return {"status": "added", "name": cfg.name}

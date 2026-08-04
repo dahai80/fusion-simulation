@@ -15,10 +15,16 @@ _DEFAULT_ENDPOINT = "http://localhost:11434/v1/chat/completions"
 _REQUEST_TIMEOUT = 30.0
 
 
+# Callers: AgentManager.add_agent, server._rpc_add_agent
+# Affected API: PolicyClient.__init__(api_key), check_available/predict/infer_from_image* send Authorization
+# Data schemas: PolicyClient._headers = {"Authorization": "Bearer <key>"} when api_key set
+# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
 class PolicyClient:
-    def __init__(self, endpoint: str = _DEFAULT_ENDPOINT, model_name: str = "qwen3.5-9b") -> None:
+    def __init__(self, endpoint: str = _DEFAULT_ENDPOINT, model_name: str = "qwen3.5-9b", api_key: str = "") -> None:
         self._endpoint = endpoint
         self._model_name = model_name
+        self._api_key = api_key
+        self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = httpx.Client(timeout=_REQUEST_TIMEOUT)
         self._async_client: httpx.AsyncClient | None = None
         self._request_count: int = 0
@@ -44,7 +50,9 @@ class PolicyClient:
 
     def check_available(self) -> bool:
         try:
-            resp = self._client.get(self._endpoint.replace("/v1/chat/completions", "/v1/models"), timeout=5.0)
+            resp = self._client.get(
+                self._endpoint.replace("/v1/chat/completions", "/v1/models"), headers=self._headers, timeout=5.0
+            )
             self._available = resp.status_code == 200
         except Exception:
             self._available = False
@@ -71,7 +79,7 @@ class PolicyClient:
                 "temperature": 0.1,
                 "max_tokens": 256,
             }
-            resp = self._client.post(self._endpoint, json=payload)
+            resp = self._client.post(self._endpoint, json=payload, headers=self._headers)
             resp.raise_for_status()
             data = resp.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -124,7 +132,7 @@ class PolicyClient:
                 "temperature": 0.1,
                 "max_tokens": 256,
             }
-            resp = self._client.post(self._endpoint, json=payload)
+            resp = self._client.post(self._endpoint, json=payload, headers=self._headers)
             resp.raise_for_status()
             data = resp.json()
             text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -176,7 +184,7 @@ class PolicyClient:
                 "temperature": 0.1,
                 "max_tokens": 256,
             }
-            resp = await self._async_client.post(self._endpoint, json=payload)
+            resp = await self._async_client.post(self._endpoint, json=payload, headers=self._headers)
             resp.raise_for_status()
             data = resp.json()
             text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -212,13 +220,28 @@ class PolicyClient:
             pass
         raise TypeError(f"Unsupported image type: {type(image)}. Expected str (base64), bytes, or numpy array.")
 
-    def _parse_action(self, content: str, action_dim: int) -> list[float]:
+    def _parse_action(self, content: str | None, action_dim: int) -> list[float]:
+        if not content:
+            logger.warning("Empty model output, using zeros")
+            return [0.0] * max(action_dim, 1)
         try:
-            start = content.index("[")
-            end = content.rindex("]") + 1
-            arr = json.loads(content[start:end])
+            fenced = content
+            if "```" in fenced:
+                parts = fenced.split("```")
+                if len(parts) >= 2:
+                    fenced = parts[1]
+                    if fenced.lstrip().startswith("json"):
+                        fenced = fenced.lstrip()[4:]
+            start = fenced.index("[")
+            end = fenced.rindex("]") + 1
+            arr = json.loads(fenced[start:end])
             if isinstance(arr, list):
-                action = [float(v) for v in arr]
+                action: list[float] = []
+                for v in arr:
+                    try:
+                        action.append(float(v))
+                    except (TypeError, ValueError):
+                        action.append(0.0)
                 if action_dim > 0 and len(action) != action_dim:
                     if len(action) < action_dim:
                         action.extend([0.0] * (action_dim - len(action)))

@@ -35,6 +35,10 @@ class KernelState(Enum):
 
 
 @dataclass
+# Callers: cli._cmd_service_start -> SimulationServer(kernel_config) -> _rpc_add_agent
+# Affected API: KernelConfig.mlx_url / mlx_api_key (new) -> AgentConfig defaults
+# Data schemas: KernelConfig gains mlx_url: str, mlx_api_key: str
+# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
 class KernelConfig:
     physics_dt: float = 0.01
     render_dt: float = 1.0 / 30.0
@@ -45,6 +49,8 @@ class KernelConfig:
     time_scale: float = 1.0
     agent_decimation: int = 1
     use_scheduler: bool = False
+    mlx_url: str = "http://localhost:11434/v1"
+    mlx_api_key: str = ""
 
 
 @dataclass
