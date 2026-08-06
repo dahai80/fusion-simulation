@@ -374,6 +374,34 @@ class TestKernelConfig:
         assert cfg.physics_dt == 0.005
         assert cfg.headless is False
 
+    def test_mlx_url_default_11432(self):
+        cfg = KernelConfig()
+        assert "11432" in cfg.mlx_url
+        assert "11434" not in cfg.mlx_url
+
+    def test_mlx_api_key_from_env(self, monkeypatch):
+        monkeypatch.setenv("FUSION_MLX_API_KEY", "test-key-123")
+        cfg = KernelConfig()
+        assert cfg.mlx_api_key == "test-key-123"
+
+    def test_mlx_api_key_empty_no_env(self, monkeypatch):
+        monkeypatch.delenv("FUSION_MLX_API_KEY", raising=False)
+        cfg = KernelConfig()
+        assert cfg.mlx_api_key == ""
+
+    def test_mlx_url_env_override(self, monkeypatch):
+        monkeypatch.setenv("FUSION_MLX_URL", "http://example.com:9999/v1")
+        cfg = KernelConfig()
+        assert cfg.mlx_url == "http://example.com:9999/v1"
+
+    def test_kernel_warns_on_empty_key(self, monkeypatch, caplog):
+        monkeypatch.delenv("FUSION_MLX_API_KEY", raising=False)
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            SimulationKernel(KernelConfig(headless=True))
+        assert any("mlx_api_key 为空" in r.message for r in caplog.records)
+
 
 class TestSimulationKernel:
     def test_create(self):

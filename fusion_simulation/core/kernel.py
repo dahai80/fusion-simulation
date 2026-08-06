@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -34,11 +35,19 @@ class KernelState(Enum):
     STOPPED = auto()
 
 
-@dataclass
 # Callers: cli._cmd_service_start -> SimulationServer(kernel_config) -> _rpc_add_agent
 # Affected API: KernelConfig.mlx_url / mlx_api_key (new) -> AgentConfig defaults
 # Data schemas: KernelConfig gains mlx_url: str, mlx_api_key: str
-# User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
+# User instruction: "处理issue和pr...发布补丁版本" + issue #5 (11434->11432) + issue #8 (env FUSION_MLX_API_KEY)
+def _default_mlx_url() -> str:
+    return os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
+
+
+def _default_mlx_api_key() -> str:
+    return os.environ.get("FUSION_MLX_API_KEY", "")
+
+
+@dataclass
 class KernelConfig:
     physics_dt: float = 0.01
     render_dt: float = 1.0 / 30.0
@@ -49,8 +58,8 @@ class KernelConfig:
     time_scale: float = 1.0
     agent_decimation: int = 1
     use_scheduler: bool = False
-    mlx_url: str = "http://localhost:11434/v1"
-    mlx_api_key: str = ""
+    mlx_url: str = field(default_factory=_default_mlx_url)
+    mlx_api_key: str = field(default_factory=_default_mlx_api_key)
 
 
 @dataclass
@@ -86,6 +95,12 @@ class SimulationKernel:
         self._body_entity_map: dict[int, EntityId] = {}
         self._run_task: asyncio.Task | None = None
         self._scheduler: Any = None
+        if not self._config.mlx_api_key:
+            logger.warning(
+                "KernelConfig.mlx_api_key 为空 (env FUSION_MLX_API_KEY 未设置); fusion-mlx 开启鉴权时 agent 调用将 401"
+            )
+        else:
+            logger.info("KernelConfig.mlx_api_key 来源 env FUSION_MLX_API_KEY (已注入)")
         logger.info(
             "SimulationKernel created: dt=%.4f headless=%s",
             self._config.physics_dt,

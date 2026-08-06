@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _default_policy_endpoint() -> str:
+    base = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
+    return base.rstrip("/") + "/chat/completions"
 
 
 class AgentRole(str, Enum):
@@ -23,7 +29,7 @@ class AgentConfig:
     name: str = ""
     role: AgentRole = AgentRole.ROBOT
     entity_id: str = ""
-    policy_endpoint: str = "http://localhost:11434/v1/chat/completions"
+    policy_endpoint: str = field(default_factory=_default_policy_endpoint)
     model_name: str = "qwen3.5-9b"
     api_key: str = ""
     action_dim: int = 0

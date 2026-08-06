@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Any
 
@@ -10,7 +11,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-_MLX_DEFAULT = "http://localhost:11434/v1"
+_MLX_DEFAULT = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
 
 
 class BCTrainer:

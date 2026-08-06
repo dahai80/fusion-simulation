@@ -80,7 +80,7 @@ am.add_agent(
         role=AgentRole.ROBOT,
         action_dim=6,
         decimation=4,
-        policy_endpoint="http://localhost:11434/v1/chat/completions",
+        policy_endpoint="http://localhost:11432/v1/chat/completions",
     )
 )
 ```
@@ -282,11 +282,18 @@ ruff format --check .
 
 ## 关键约束
 
-- 所有模型推理通过 fusion-mlx HTTP API（`http://localhost:11434/v1`）
+- 所有模型推理通过 fusion-mlx HTTP API（`http://localhost:11432/v1`，可通过 `FUSION_MLX_URL` 覆盖）
 - 禁止直接导入 torch/CUDA/MLX
 - PyBullet 可选 — 代码优雅处理 `ImportError`
 - Python ≥3.12
 - 默认模型：`qwen3.5-9b`（通过 fusion-mlx）
+
+## 环境变量
+
+| 变量 | 用途 | 默认值 |
+|----------|---------|---------|
+| `FUSION_MLX_URL` | fusion-mlx base URL（`KernelConfig`、`AgentConfig`、`GUIConfig`、CLI `--mlx-url`、`BCTrainer` 读取） | `http://localhost:11432/v1` |
+| `FUSION_MLX_API_KEY` | fusion-mlx Bearer 鉴权 key（`KernelConfig`、`GUIConfig`、CLI `--api-key` 读取） | 空 — kernel 启动时输出 WARNING |
 
 ## 项目结构
 

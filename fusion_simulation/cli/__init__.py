@@ -4,10 +4,14 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_MLX_URL = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
+_DEFAULT_API_KEY = os.environ.get("FUSION_MLX_API_KEY", "")
 
 
 def main():
@@ -15,7 +19,7 @@ def main():
         description="Fusion-Simulation — Robot virtual simulation training and testing",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--mlx-url", default="http://localhost:11434/v1", help="fusion-mlx URL")
+    parser.add_argument("--mlx-url", default=_DEFAULT_MLX_URL, help="fusion-mlx URL (env: FUSION_MLX_URL)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
 
     subparsers = parser.add_subparsers(dest="command", help="Commands")
@@ -114,8 +118,8 @@ def main():
     # Data schemas: args.mlx_url / args.api_key threaded to kernel_config and gui_config
     # User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
     svc_start.add_argument("--gui-port", type=int, default=11455, help="Dashboard port (default: 11455)")
-    svc_start.add_argument("--mlx-url", default="http://localhost:11434/v1", help="fusion-mlx base URL")
-    svc_start.add_argument("--api-key", default="", help="fusion-mlx API key (Bearer auth)")
+    svc_start.add_argument("--mlx-url", default=_DEFAULT_MLX_URL, help="fusion-mlx base URL (env: FUSION_MLX_URL)")
+    svc_start.add_argument("--api-key", default=_DEFAULT_API_KEY, help="fusion-mlx API key (env: FUSION_MLX_API_KEY)")
     svc_sub.add_parser("stop", help="Stop simulation server")
     svc_health = svc_sub.add_parser("health", help="Check service health")
     svc_health.add_argument("--url", default="http://127.0.0.1:11456", help="Metrics URL")

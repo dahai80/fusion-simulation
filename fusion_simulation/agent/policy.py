@@ -4,6 +4,7 @@ import base64
 import io
 import json
 import logging
+import os
 import time
 from typing import Any
 
@@ -11,7 +12,13 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_ENDPOINT = "http://localhost:11434/v1/chat/completions"
+
+def _default_endpoint() -> str:
+    base = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
+    return base.rstrip("/") + "/chat/completions"
+
+
+_DEFAULT_ENDPOINT = _default_endpoint()
 _REQUEST_TIMEOUT = 30.0
 
 
