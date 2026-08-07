@@ -166,8 +166,16 @@ pip install -e ".[test,physics]"
 ### Via Homebrew (Apple Silicon)
 
 ```bash
+# Published release (recommended) — pulls source tarball from GitHub releases
+brew install dahai80/test/fusion-simulation
+
+# Or install from the in-tree formula directly
 brew install --formula Formula/fusion-simulation.rb
 ```
+
+> The release formula (`Formula/fusion-simulation.rb`) points at a `git archive`-generated
+> `fs-release.tar.gz` attached to the matching GitHub release, so its `sha256` is stable
+> (no self-reference). The release asset excludes the `Formula/` directory from the tarball.
 
 ## CLI
 
