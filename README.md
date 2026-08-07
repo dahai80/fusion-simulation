@@ -158,8 +158,10 @@ git clone <repo-url>
 cd fusion-simulation
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[test]"
+pip install -e ".[test,physics]"
 ```
+
+> PyBullet (physics engine) is optional. Install with the `physics` extra (`pip install -e ".[physics]"`) or `pip install pybullet` separately. The package imports and runs without it; only physics simulation requires it.
 
 ### Via Homebrew (Apple Silicon)
 

@@ -1,15 +1,15 @@
 class FusionSimulation < Formula
   desc "Robot virtual simulation training and testing platform for Apple Silicon"
-  homepage "https://github.com/user/fusion-simulation"
-  url "https://github.com/user/fusion-simulation/archive/refs/tags/v0.1.1.tar.gz"
-  sha256 "PLACEHOLDER_REPLACE_WITH_REAL_SHA256"
-  license "MIT"
-  head "https://github.com/user/fusion-simulation.git", branch: "main"
+  homepage "https://github.com/dahai80/fusion-simulation"
+  url "https://github.com/dahai80/fusion-simulation/archive/refs/tags/v0.1.5.tar.gz"
+  sha256 "f2d38e224a76f3518a55c28ac54367a7945780ea069a30be93cabc596810026d"
+  license "Apache-2.0"
+  head "https://github.com/dahai80/fusion-simulation.git", branch: "main"
 
   depends_on "python@3.12"
 
   on_macos do
-    depends_on :macos => :ventura
+    depends_on macos: :ventura
   end
 
   def install
@@ -23,6 +23,6 @@ class FusionSimulation < Formula
   end
 
   test do
-    system bin/"fusion-sim", "version"
+    assert_match "v#{version}", shell_output("#{bin}/fusion-sim version")
   end
 end

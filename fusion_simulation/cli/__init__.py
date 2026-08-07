@@ -8,6 +8,8 @@ import os
 import sys
 from pathlib import Path
 
+from fusion_simulation import __version__
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MLX_URL = os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1")
@@ -177,7 +179,7 @@ def main():
 
 
 def _cmd_version():
-    print("Fusion-Simulation v0.1.1")
+    print(f"Fusion-Simulation v{__version__}")
     print("Core: SimulationKernel + ECS + EventBus + SimClock")
     print("Physics: PyBullet (V0.1) | SceneKit (V0.2) | Metal (V0.3)")
     print("Sensors: RGB Camera + IMU")

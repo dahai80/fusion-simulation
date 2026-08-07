@@ -1,6 +1,6 @@
 [project]
 name = "fusion-simulation"
-version = "0.1.5"
+version = "0.1.6"
 description = "Fusion-Simulation — Robot virtual simulation training and testing platform for Apple Silicon"
 license = "Apache-2.0"
 requires-python = ">=3.12"
@@ -8,7 +8,6 @@ dependencies = [
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
     "numpy>=1.26.0",
-    "pybullet>=3.2.5",
     "defusedxml>=0.7.0",
     "grpcio>=1.60.0",
     "grpcio-tools>=1.60.0",
@@ -17,6 +16,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+physics = [
+    "pybullet>=3.2.5",
+]
 test = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
