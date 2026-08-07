@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import threading
 from pathlib import Path
 
@@ -136,7 +137,7 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
         role: str = "robot",
         action_dim: int = 6,
         entity_id: str = "",
-        model_name: str = "qwen3.5-9b",
+        model_name: str = os.environ.get("FUSION_MLX_MODEL", "Qwen3.5-4B-bf16"),
     ):
         srv = app.state.sim_server
         if srv is None:
@@ -197,7 +198,9 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
         try:
             import httpx
 
-            mlx_headers = {"Authorization": f"Bearer {cfg.mlx_api_key}"} if cfg.mlx_api_key else {}
+            mlx_headers = {"X-Fusion-Route": os.environ.get("FUSION_MLX_ROUTE", "mlx")}
+            if cfg.mlx_api_key:
+                mlx_headers["Authorization"] = f"Bearer {cfg.mlx_api_key}"
             async with httpx.AsyncClient(timeout=2.0) as client:
                 resp = await client.get(f"{cfg.mlx_url}/models", headers=mlx_headers)
                 checks["fusion_mlx"] = {"available": resp.status_code == 200}

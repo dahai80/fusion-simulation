@@ -11,13 +11,23 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-_MLX_DEFAULT = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
+_MLX_DEFAULT = os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1")
+_DEFAULT_MODEL = os.environ.get("FUSION_MLX_MODEL", "Qwen3.5-4B-bf16")
 
 
 class BCTrainer:
-    def __init__(self, mlx_url: str = _MLX_DEFAULT, model: str = "qwen3.5-9b") -> None:
+    def __init__(
+        self,
+        mlx_url: str = _MLX_DEFAULT,
+        model: str = _DEFAULT_MODEL,
+        api_key: str = "",
+    ) -> None:
         self.mlx_url = mlx_url.rstrip("/")
         self.model = model
+        self._headers = {"X-Fusion-Route": os.environ.get("FUSION_MLX_ROUTE", "mlx")}
+        key = api_key or os.environ.get("FUSION_MLX_API_KEY", "")
+        if key:
+            self._headers["Authorization"] = f"Bearer {key}"
         self._history: dict[str, list[float]] = {"loss": [], "accuracy": []}
         self._client = httpx.AsyncClient(timeout=120.0)
 
@@ -46,6 +56,7 @@ class BCTrainer:
                     "max_tokens": 64,
                     "temperature": 0.0,
                 },
+                headers=self._headers,
             )
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]

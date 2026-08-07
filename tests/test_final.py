@@ -22,7 +22,7 @@ class TestCLIFinal:
         args.model = "test"
         args.engine = "lerobot"
         args.episodes = 3
-        args.mlx_url = "http://localhost:11432/v1"
+        args.mlx_url = "http://localhost:11434/v1"
         with patch(
             "fusion_simulation.eval.evaluator.SimulationEvaluator.evaluate",
             AsyncMock(return_value=EvalResult(task_success_rate=0.8)),
@@ -41,7 +41,7 @@ class TestCLIFinal:
             args = MagicMock()
             args.model = "test"
             args.output = out
-            args.mlx_url = "http://localhost:11432/v1"
+            args.mlx_url = "http://localhost:11434/v1"
             with patch(
                 "fusion_simulation.eval.evaluator.SimulationEvaluator.evaluate",
                 AsyncMock(return_value=EvalResult(task_success_rate=0.9)),
@@ -59,7 +59,7 @@ class TestCLIFinal:
         args = MagicMock()
         args.model = "test"
         args.output = ""
-        args.mlx_url = "http://localhost:11432/v1"
+        args.mlx_url = "http://localhost:11434/v1"
         with patch(
             "fusion_simulation.eval.evaluator.SimulationEvaluator.evaluate",
             AsyncMock(return_value=EvalResult(task_success_rate=0.9)),

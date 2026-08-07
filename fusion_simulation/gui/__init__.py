@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def _default_gui_mlx_url() -> str:
-    return os.environ.get("FUSION_MLX_URL", "http://127.0.0.1:11432/v1")
+    return os.environ.get("FUSION_MLX_URL", "http://127.0.0.1:11434/v1")
 
 
 def _default_gui_mlx_api_key() -> str:

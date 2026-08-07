@@ -248,7 +248,7 @@ class SimulationServer:
             action_dim=params.get("action_dim", 0),
             policy_endpoint=params.get("policy_endpoint", "")
             or (self._kernel_config.mlx_url.rstrip("/") + "/chat/completions"),
-            model_name=params.get("model_name", "qwen3.5-9b"),
+            model_name=params.get("model_name", "") or AgentConfig().model_name,
             api_key=params.get("api_key", "") or self._kernel_config.mlx_api_key,
         )
         self._agent_manager.add_agent(cfg)

@@ -80,7 +80,7 @@ am.add_agent(
         role=AgentRole.ROBOT,
         action_dim=6,
         decimation=4,
-        policy_endpoint="http://localhost:11432/v1/chat/completions",
+        policy_endpoint="http://localhost:11434/v1/chat/completions",
     )
 )
 ```
@@ -282,18 +282,21 @@ ruff format --check .
 
 ## Key Constraints
 
-- All model inference via fusion-mlx HTTP API (`http://localhost:11432/v1`, override with `FUSION_MLX_URL`)
+- All model inference via fusion-mlx HTTP API (`http://localhost:11434/v1`, override with `FUSION_MLX_URL`)
 - No direct torch/CUDA/MLX imports
 - PyBullet optional — code handles `ImportError` gracefully
 - Python ≥3.12
-- Default model: `qwen3.5-9b` via fusion-mlx
+- Default model: `Qwen3.5-4B-bf16` via fusion-mlx (override with `FUSION_MLX_MODEL`)
+- All fusion-mlx requests carry `X-Fusion-Route: mlx` + `Authorization: Bearer ${FUSION_MLX_API_KEY}`
 
 ## Environment Variables
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `FUSION_MLX_URL` | fusion-mlx base URL (read by `KernelConfig`, `AgentConfig`, `GUIConfig`, CLI `--mlx-url`, `BCTrainer`) | `http://localhost:11432/v1` |
-| `FUSION_MLX_API_KEY` | fusion-mlx Bearer auth key (read by `KernelConfig`, `GUIConfig`, CLI `--api-key`) | empty — emits a WARNING on kernel start |
+| `FUSION_MLX_URL` | fusion-mlx base URL (read by `KernelConfig`, `AgentConfig`, `GUIConfig`, CLI `--mlx-url`, `BCTrainer`) | `http://localhost:11434/v1` |
+| `FUSION_MLX_API_KEY` | fusion-mlx Bearer auth key (read by `KernelConfig`, `GUIConfig`, CLI `--api-key`, `BCTrainer`) | empty — emits a WARNING on kernel start |
+| `FUSION_MLX_MODEL` | default model name (read by `AgentConfig`, `PolicyClient`, `BCTrainer`, GUI) | `Qwen3.5-4B-bf16` |
+| `FUSION_MLX_ROUTE` | `X-Fusion-Route` header value for fusion-mlx routing | `mlx` |
 
 ## Project Structure
 

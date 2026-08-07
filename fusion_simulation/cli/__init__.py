@@ -10,7 +10,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MLX_URL = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
+_DEFAULT_MLX_URL = os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1")
 _DEFAULT_API_KEY = os.environ.get("FUSION_MLX_API_KEY", "")
 
 

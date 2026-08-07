@@ -15,8 +15,21 @@ def register_sensor(sensor_type: SensorType, cls: type[SensorBase]) -> None:
     logger.debug("Registered sensor type: %s -> %s", sensor_type.value, cls.__name__)
 
 
+def _ensure_registered() -> None:
+    if _SENSOR_REGISTRY:
+        return
+    for mod in ("rgb_camera", "depth_camera", "imu", "contact", "semantic_camera"):
+        try:
+            __import__(f"fusion_simulation.sensor.{mod}")
+        except Exception:
+            logger.debug("Sensor module %s import failed during bootstrap", mod, exc=True)
+
+
 def create_sensor(config: SensorConfig) -> SensorBase:
     cls = _SENSOR_REGISTRY.get(config.sensor_type)
+    if cls is None:
+        _ensure_registered()
+        cls = _SENSOR_REGISTRY.get(config.sensor_type)
     if cls is None:
         raise ValueError(f"Unknown sensor type: {config.sensor_type}")
     return cls(config)

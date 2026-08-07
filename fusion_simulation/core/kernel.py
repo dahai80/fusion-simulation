@@ -36,11 +36,11 @@ class KernelState(Enum):
 
 
 # Callers: cli._cmd_service_start -> SimulationServer(kernel_config) -> _rpc_add_agent
-# Affected API: KernelConfig.mlx_url / mlx_api_key (new) -> AgentConfig defaults
+# Affected API: KernelConfig.mlx_url / mlx_api_key -> AgentConfig defaults
 # Data schemas: KernelConfig gains mlx_url: str, mlx_api_key: str
-# User instruction: "处理issue和pr...发布补丁版本" + issue #5 (11434->11432) + issue #8 (env FUSION_MLX_API_KEY)
+# User instruction: "20、对fusion-simulation的核心特性进行验收...达到生产发布标准" (dispatch doc §2.3 方案A: 默认11434直连)
 def _default_mlx_url() -> str:
-    return os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
+    return os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1")
 
 
 def _default_mlx_api_key() -> str:

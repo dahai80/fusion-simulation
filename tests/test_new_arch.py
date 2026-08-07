@@ -374,10 +374,10 @@ class TestKernelConfig:
         assert cfg.physics_dt == 0.005
         assert cfg.headless is False
 
-    def test_mlx_url_default_11432(self):
+    def test_mlx_url_default_11434(self):
         cfg = KernelConfig()
-        assert "11432" in cfg.mlx_url
-        assert "11434" not in cfg.mlx_url
+        assert "11434" in cfg.mlx_url
+        assert "11432" not in cfg.mlx_url
 
     def test_mlx_api_key_from_env(self, monkeypatch):
         monkeypatch.setenv("FUSION_MLX_API_KEY", "test-key-123")

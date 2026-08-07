@@ -10,8 +10,11 @@ logger = logging.getLogger(__name__)
 
 
 def _default_policy_endpoint() -> str:
-    base = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
+    base = os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1")
     return base.rstrip("/") + "/chat/completions"
+
+
+_DEFAULT_MODEL = os.environ.get("FUSION_MLX_MODEL", "Qwen3.5-4B-bf16")
 
 
 class AgentRole(str, Enum):
@@ -30,7 +33,7 @@ class AgentConfig:
     role: AgentRole = AgentRole.ROBOT
     entity_id: str = ""
     policy_endpoint: str = field(default_factory=_default_policy_endpoint)
-    model_name: str = "qwen3.5-9b"
+    model_name: str = _DEFAULT_MODEL
     api_key: str = ""
     action_dim: int = 0
     obs_keys: list[str] = field(default_factory=list)

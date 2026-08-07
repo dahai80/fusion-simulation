@@ -14,11 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 def _default_endpoint() -> str:
-    base = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
+    base = os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1")
     return base.rstrip("/") + "/chat/completions"
 
 
 _DEFAULT_ENDPOINT = _default_endpoint()
+_DEFAULT_MODEL = os.environ.get("FUSION_MLX_MODEL", "Qwen3.5-4B-bf16")
+_DEFAULT_ROUTE = os.environ.get("FUSION_MLX_ROUTE", "mlx")
 _REQUEST_TIMEOUT = 30.0
 
 
@@ -27,11 +29,13 @@ _REQUEST_TIMEOUT = 30.0
 # Data schemas: PolicyClient._headers = {"Authorization": "Bearer <key>"} when api_key set
 # User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
 class PolicyClient:
-    def __init__(self, endpoint: str = _DEFAULT_ENDPOINT, model_name: str = "qwen3.5-9b", api_key: str = "") -> None:
+    def __init__(self, endpoint: str = _DEFAULT_ENDPOINT, model_name: str = _DEFAULT_MODEL, api_key: str = "") -> None:
         self._endpoint = endpoint
         self._model_name = model_name
         self._api_key = api_key
-        self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        self._headers = {"X-Fusion-Route": _DEFAULT_ROUTE}
+        if api_key:
+            self._headers["Authorization"] = f"Bearer {api_key}"
         self._client = httpx.Client(timeout=_REQUEST_TIMEOUT)
         self._async_client: httpx.AsyncClient | None = None
         self._request_count: int = 0
