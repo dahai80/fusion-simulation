@@ -1,4 +1,4 @@
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 from .agent import AgentConfig, AgentManager, AgentRole, PolicyClient
 from .core.clock import SimClock, SimTime

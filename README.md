@@ -298,6 +298,7 @@ ruff format --check .
 - Python ≥3.12
 - Default model: `Qwen3.5-4B-bf16` via fusion-mlx (override with `FUSION_MLX_MODEL`)
 - All fusion-mlx requests carry `X-Fusion-Route: mlx` + `Authorization: Bearer ${FUSION_MLX_API_KEY}`
+- **11434 direct-connect is a deliberate decision, not an oversight** — fusion-simulation is **excluded from Phase C fusion-core unification** (which routes all projects through the 11432 gateway). Rationale: the latency-sensitive robot control loop uses a synchronous `httpx.Client` with multimodal `image_url`, whereas `fusion-core`'s `http_client` is async + non-multimodal and cannot fully replace it. Do not migrate the 11434 default to 11432 without first evaluating gateway-hop latency and extending fusion-core for multimodal. See [#10](https://github.com/dahai80/fusion-simulation/issues/10).
 
 ## Environment Variables
 

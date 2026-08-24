@@ -282,18 +282,22 @@ ruff format --check .
 
 ## 关键约束
 
-- 所有模型推理通过 fusion-mlx HTTP API（`http://localhost:11432/v1`，可通过 `FUSION_MLX_URL` 覆盖）
+- 所有模型推理通过 fusion-mlx HTTP API（`http://localhost:11434/v1`，可通过 `FUSION_MLX_URL` 覆盖）
 - 禁止直接导入 torch/CUDA/MLX
 - PyBullet 可选 — 代码优雅处理 `ImportError`
 - Python ≥3.12
-- 默认模型：`qwen3.5-9b`（通过 fusion-mlx）
+- 默认模型：`Qwen3.5-4B-bf16`（通过 fusion-mlx，可通过 `FUSION_MLX_MODEL` 覆盖）
+- 所有 fusion-mlx 请求携带 `X-Fusion-Route: mlx` + `Authorization: Bearer ${FUSION_MLX_API_KEY}`
+- **11434 直连为刻意决策，非疏漏** — fusion-simulation **不纳入 Phase C fusion-core 统一推广**（该推广将所有项目统一经 11432 网关路由）。理由：延迟敏感的机器人控制环使用同步 `httpx.Client` + 多模态 `image_url`，而 `fusion-core` 的 `http_client` 为 async + 不支持多模态，无法完全替代。在未评估网关代理 hop 延迟 + 扩展 fusion-core 多模态支持前，勿将 11434 默认值迁至 11432。见 [#10](https://github.com/dahai80/fusion-simulation/issues/10)。
 
 ## 环境变量
 
 | 变量 | 用途 | 默认值 |
 |----------|---------|---------|
-| `FUSION_MLX_URL` | fusion-mlx base URL（`KernelConfig`、`AgentConfig`、`GUIConfig`、CLI `--mlx-url`、`BCTrainer` 读取） | `http://localhost:11432/v1` |
-| `FUSION_MLX_API_KEY` | fusion-mlx Bearer 鉴权 key（`KernelConfig`、`GUIConfig`、CLI `--api-key` 读取） | 空 — kernel 启动时输出 WARNING |
+| `FUSION_MLX_URL` | fusion-mlx base URL（`KernelConfig`、`AgentConfig`、`GUIConfig`、CLI `--mlx-url`、`BCTrainer` 读取） | `http://localhost:11434/v1` |
+| `FUSION_MLX_API_KEY` | fusion-mlx Bearer 鉴权 key（`KernelConfig`、`GUIConfig`、CLI `--api-key`、`BCTrainer` 读取） | 空 — kernel 启动时输出 WARNING |
+| `FUSION_MLX_MODEL` | 默认模型名（`AgentConfig`、`PolicyClient`、`BCTrainer`、GUI 读取） | `Qwen3.5-4B-bf16` |
+| `FUSION_MLX_ROUTE` | fusion-mlx 路由的 `X-Fusion-Route` header 值 | `mlx` |
 
 ## 项目结构
 
