@@ -10,8 +10,10 @@ from typing import Any
 
 from fusion_simulation.agent.manager import AgentManager
 from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
+from fusion_simulation.core.rng import numpy_to_native
 from fusion_simulation.sensor.manager import SensorManager
 from fusion_simulation.service.config import ServiceConfig
+from fusion_simulation.service.encoding import encode_sensor_payload, encode_state_payload
 from fusion_simulation.service.gateway_client import (
     GatewayClient,
     GatewayConfig,
@@ -49,6 +51,7 @@ class SimulationServer:
         self._gateway_client: GatewayClient | None = None
         self._metrics_server: MetricsServer | None = None
         self._metrics_collector: MetricsCollector | None = None
+        self._actual_port: int = self._config.port
 
     @property
     def kernel(self) -> SimulationKernel | None:
@@ -57,6 +60,10 @@ class SimulationServer:
     @property
     def is_running(self) -> bool:
         return self._running
+
+    @property
+    def actual_port(self) -> int:
+        return self._actual_port
 
     def _ensure_kernel(self) -> SimulationKernel:
         if self._kernel is None:
@@ -73,21 +80,23 @@ class SimulationServer:
     def _on_event(self, event: Any) -> None:
         with self._lock:
             subscribers = list(self._event_subscribers)
-        dead = []
+        dead: list[queue.Queue] = []
         dropped = 0
-        for i, q in enumerate(subscribers):
+        for q in subscribers:
             try:
                 q.put_nowait(event)
             except queue.Full:
                 dropped += 1
                 logger.warning("Event subscriber queue full, dropping event %s", getattr(event, "kind", "?"))
             except Exception:
-                dead.append(i)
+                dead.append(q)
         if dead:
             with self._lock:
-                for i in reversed(dead):
-                    if i < len(self._event_subscribers):
-                        self._event_subscribers.pop(i)
+                for q in dead:
+                    try:
+                        self._event_subscribers.remove(q)
+                    except ValueError:
+                        pass
         if dropped:
             logger.warning("_on_event: %d events dropped across slow subscribers", dropped)
 
@@ -120,10 +129,11 @@ class SimulationServer:
             servicer = _SimulationServicer(self)
             add_SimulationServiceServicer_to_server(servicer, self._server)
             addr = f"{self._config.host}:{self._config.port}"
-            self._server.add_insecure_port(addr)
+            bound_port = self._server.add_insecure_port(addr)
+            self._actual_port = bound_port
             self._server.start()
             self._running = True
-            logger.info("SimulationServer started on %s (gRPC)", addr)
+            logger.info("SimulationServer started on %s (gRPC, actual_port=%d)", addr, bound_port)
         except ImportError:
             logger.info("gRPC dependencies not available, starting HTTP-only server")
             self._running = True
@@ -234,7 +244,7 @@ class SimulationServer:
         return {"restored": ok}
 
     def _rpc_add_sensor(self, params: dict[str, Any]) -> dict[str, Any]:
-        self._ensure_kernel()
+        k = self._ensure_kernel()
         if self._sensor_manager is None:
             return {"error": "No sensor manager"}
         from fusion_simulation.sensor.base import SensorConfig, SensorType
@@ -245,11 +255,14 @@ class SimulationServer:
             entity_id=params.get("entity_id", ""),
             params=params.get("params", {}),
         )
-        self._sensor_manager.add_sensor(cfg)
+        try:
+            k.spawn_sensor(cfg)
+        except RuntimeError as e:
+            return {"error": str(e), "error_code": "quota_exceeded"}
         return {"status": "added", "name": cfg.name}
 
     def _rpc_add_agent(self, params: dict[str, Any]) -> dict[str, Any]:
-        self._ensure_kernel()
+        k = self._ensure_kernel()
         if self._agent_manager is None:
             return {"error": "No agent manager"}
         from fusion_simulation.agent.config import AgentConfig, AgentRole
@@ -267,7 +280,10 @@ class SimulationServer:
             model_name=params.get("model_name", "") or AgentConfig().model_name,
             api_key=self._kernel_config.mlx_api_key,
         )
-        self._agent_manager.add_agent(cfg)
+        try:
+            k.spawn_agent(cfg)
+        except RuntimeError as e:
+            return {"error": str(e), "error_code": "quota_exceeded"}
         return {"status": "added", "name": cfg.name}
 
     def _rpc_get_observations(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -353,6 +369,11 @@ class SimulationServer:
 
     def _start_gateway(self) -> None:
         cfg = self._gateway_config or GatewayConfig()
+        if cfg.service_port != self._actual_port:
+            logger.info(
+                "Gateway registering actual bound port %d (config port was %d)", self._actual_port, cfg.service_port
+            )
+            cfg.service_port = self._actual_port
         self._gateway_client = GatewayClient(cfg)
         self._gateway_client.set_health_provider(self.get_health)
         try:
@@ -436,7 +457,7 @@ try:
                     yield simulation_pb2.EventResponse(
                         kind=kind_val,
                         sim_time=event.data.get("sim_time", 0.0),
-                        data_json=json.dumps(event.data, default=str),
+                        data_json=json.dumps(numpy_to_native(event.data), ensure_ascii=False),
                     )
             finally:
                 self._server.unsubscribe_events(q)
@@ -450,7 +471,7 @@ try:
                 resp = self._server._rpc_load_scene({"name": request.name})
             return simulation_pb2.LoadSceneResponse(
                 loaded=resp.get("status") == "loaded",
-                result_json=json.dumps(resp.get("result", {}), default=str),
+                result_json=json.dumps(numpy_to_native(resp.get("result", {})), ensure_ascii=False),
             )
 
         def SaveSnapshot(self, request, context):
@@ -483,11 +504,20 @@ try:
                     for sname, sdata in all_obs.items():
                         if sensor_names and sname not in sensor_names:
                             continue
+                        # Binary payload: raw bytes for cameras (no json.dumps
+                        # text bloat), json_native for small structs. Keeps
+                        # 640x480 frames under gRPC 4MB max (audit A4).
+                        payload, enc, w, h, ch = encode_sensor_payload(sdata)
                         yield simulation_pb2.SensorDataResponse(
                             sim_time=k.clock.sim_time,
                             frame_count=k.clock.frame_count,
                             sensor_name=sname,
-                            data_json=json.dumps(sdata, default=str),
+                            data_json="",
+                            data_payload=payload,
+                            encoding=enc,
+                            width=w,
+                            height=h,
+                            channels=ch,
                         )
                     frame_count += 1
                     time.sleep(interval)
@@ -505,12 +535,14 @@ try:
                         params = json.loads(req.params_json)
                     except json.JSONDecodeError:
                         k = self._server.kernel
+                        err_state = {"error": "Invalid JSON in params_json", "error_code": "bad_params"}
+                        payload, enc = encode_state_payload(err_state)
                         yield simulation_pb2.SimStateResponse(
                             sim_time=k.clock.sim_time if k else 0.0,
                             frame_count=k.clock.frame_count if k else 0,
-                            state_json=json.dumps(
-                                {"error": "Invalid JSON in params_json", "error_code": "bad_params"}, default=str
-                            ),
+                            state_json="",
+                            state_payload=payload,
+                            encoding=enc,
                         )
                         continue
                 if command == "step":
@@ -526,10 +558,13 @@ try:
                 else:
                     resp = {"error": f"Unknown command: {command}"}
                 k = self._server.kernel
+                payload, enc = encode_state_payload(resp)
                 yield simulation_pb2.SimStateResponse(
                     sim_time=k.clock.sim_time if k else 0.0,
                     frame_count=k.clock.frame_count if k else 0,
-                    state_json=json.dumps(resp, default=str),
+                    state_json="",
+                    state_payload=payload,
+                    encoding=enc,
                 )
 
 except ImportError:

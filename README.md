@@ -323,11 +323,36 @@ ruff format --check .
 | `FUSION_MLX_MODEL` | default model name (read by `AgentConfig`, `PolicyClient`, `BCTrainer`, GUI) | `Qwen3.5-4B-bf16` |
 | `FUSION_MLX_ROUTE` | `X-Fusion-Route` header value for fusion-mlx routing | `mlx` |
 
+## Reliability & Determinism (v0.1.9)
+
+v0.1.9 hardens the platform against the v0.1.8 audit (22 P0–P2 blockers). Highlights:
+
+**P0 — fakes & deployment blockers removed**
+- `SimulationEvaluator._run_episode`: removed fake `time.sleep` "progress"; success metric is now normalized to `[0,1]` against an explicit target, not an absolute threshold.
+- CLI `train` no longer fabricates data with `random.random()` — `BCTrainer` exports real dataset samples to fusion-mlx; the simulated-loss fallback is gated behind `allow_simulated=True` and logs a WARNING, so it cannot ship as "trained" by default.
+- Headless camera rendering uses `ER_TINY_RENDERER` (CPU), not the unavailable OpenGL GUI renderer.
+- Added `get_all_body_ids()` so IMU/Contact sensors iterate real physics bodies instead of an empty range.
+- Camera sensor contract fixed (`view_matrix`/`projection_matrix`/`camera_orientation` replace the unused `camera_position`).
+- Bare `except: pass` in sensors replaced with `logger.exception` + error reporting.
+- `_step_once` wraps each subsystem in try/except wired to `FaultIsolationManager`; `ResourceQuotaManager` gates entity spawn and per-frame allocation.
+
+**P1 — inference & lifecycle**
+- LLM inference moved out of the blocking frame loop (async + circuit breaker / backoff / rate-limit); a failing fusion-mlx no longer stalls the simulation.
+- Multi-node: unique instance ID, dynamic port allocation, graceful `SIGTERM` shutdown.
+- Snapshots use real `pybullet.saveState`/`restoreState` with an LRU cap and eviction; restore re-syncs the ECS body map.
+
+**P2 — long-run stability & determinism**
+- Long-run leaks fixed: world entities cleaned on unload, reset unloads spawned bodies, collector enforces a frame cap, dataset `index.json` written atomically with `flock`.
+- Determinism: `core/rng.py` seeds `random` + `numpy` globally (`seed_everything`) and isolates per-episode RNG via `np.random.default_rng(derived_seed)` — global `np.random` is no longer mutated mid-episode. Sensor/agent/trainer/collector/gym-env all consume a derived generator. Reproducibility verified by tests (same seed → identical sensor noise + RNG streams).
+- Communication encoding: `SensorDataResponse`/`SimStateResponse` gained `bytes` payload fields; camera frames travel as raw RGB/depth bytes (≤4MB, under the gRPC max) instead of `json.dumps(default=str)` text. All `default=str` numpy-as-text encoding removed in favor of `numpy_to_native`. True zero-copy FlatBuffers needs the upstream `flatc` compiler (not in-tree); the proto bytes path is the production zero-copy route.
+
+> The audit report lives at `audit/fusion-simulation-audit-report-0824.md`. 592 tests green, `ruff check` + `ruff format --check` clean.
+
 ## Project Structure
 
 ```
 fusion_simulation/
-├── core/           # L1: Kernel, Clock, ECS, EventBus, WorldState, FaultIsolation, Plugin, ResourceQuota
+├── core/           # L1: Kernel, Clock, ECS, EventBus, WorldState, FaultIsolation, Plugin, ResourceQuota, RNG
 │   ├── clock.py
 │   ├── ecs.py
 │   ├── event_bus.py
@@ -335,6 +360,7 @@ fusion_simulation/
 │   ├── kernel.py
 │   ├── plugin.py
 │   ├── resource.py
+│   ├── rng.py
 │   └── world_state.py
 ├── physics/        # L2: Physics engine abstraction
 │   ├── base.py
@@ -371,6 +397,7 @@ fusion_simulation/
 │   └── manager.py
 ├── service/        # L6: gRPC + HTTP + OpenAI API service
 │   ├── config.py
+│   ├── encoding.py
 │   ├── flatbuf/
 │   │   └── serializer.py
 │   ├── gateway_client.py

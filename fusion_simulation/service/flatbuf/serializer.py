@@ -5,15 +5,22 @@ from typing import Any
 
 import numpy as np
 
+from fusion_simulation.core.rng import numpy_to_native
+
 logger = logging.getLogger(__name__)
 
+# NOTE: true zero-copy FlatBuffers requires the `flatc` compiler to generate
+# sensor_flatbuf.py from sensor.fbs. flatc is an upstream/external tool not
+# present in this project's env, so _FLATBUFS_AVAILABLE stays False here and
+# the json_native fallback is the live path. Proto bytes payloads (encoding.py)
+# carry camera data as raw bytes — that is the production zero-copy path.
 _FLATBUFS_AVAILABLE = False
 try:
     from fusion_simulation.service.flatbuf import sensor_flatbuf as fb
 
     _FLATBUFS_AVAILABLE = True
 except ImportError:
-    logger.debug("FlatBuffers generated module not available. Run flatc to generate.")
+    logger.debug("FlatBuffers generated module not available (flatc not run). Using json_native fallback.")
 
 
 def _build_vec3(builder, x: float, y: float, z: float) -> int:
@@ -319,7 +326,9 @@ def _fallback_serialize(data: dict[str, Any]) -> bytes:
     import json
 
     try:
-        return json.dumps(data, default=str).encode("utf-8")
+        # numpy_to_native converts arrays -> lists, scalars -> int/float,
+        # so we no longer encode numpy as str([[1 2 3]]) text (audit A4).
+        return json.dumps(numpy_to_native(data), ensure_ascii=False).encode("utf-8")
     except Exception as e:
         logger.error("Fallback serialization failed: %s", e)
         return b"{}"

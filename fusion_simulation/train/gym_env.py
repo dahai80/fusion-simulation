@@ -18,17 +18,23 @@ class ObservationManager:
     _noise_scale: dict[str, float]
     _history_len: int
     _history: dict[str, list[np.ndarray]]
+    _rng: np.random.Generator | None
 
     def __init__(
         self,
         groups: dict[str, list[str]] | None = None,
         noise_scale: dict[str, float] | None = None,
         history_len: int = 1,
+        rng: np.random.Generator | None = None,
     ):
         self._groups = groups or {"policy": []}
         self._noise_scale = noise_scale or {}
         self._history_len = history_len
         self._history = {}
+        self._rng = rng
+
+    def set_rng(self, rng: np.random.Generator | None) -> None:
+        self._rng = rng
 
     def compute(self, raw_obs: dict[str, Any]) -> dict[str, np.ndarray]:
         result = {}
@@ -41,7 +47,11 @@ class ObservationManager:
                 arr = np.asarray(val, dtype=np.float32).flatten()
                 scale = self._noise_scale.get(key, 0.0)
                 if scale > 0.0:
-                    arr = arr + np.random.normal(0, scale, arr.shape).astype(np.float32)
+                    if self._rng is not None:
+                        arr = arr + self._rng.normal(0, scale, arr.shape).astype(np.float32)
+                    else:
+                        logger.debug("ObservationManager noise using unseded np.random — set_rng not called")
+                        arr = arr + np.random.normal(0, scale, arr.shape).astype(np.float32)
                 arrays.append(arr)
             if arrays:
                 result[group_name] = np.concatenate(arrays)
@@ -189,13 +199,16 @@ class FusionGymEnv:
         max_steps: int = 1000,
         headless: bool = True,
         physics_dt: float = 0.01,
+        seed: int = 42,
     ):
         self._decimation = decimation
+        self._base_seed = int(seed)
         self._kernel = SimulationKernel(
             KernelConfig(
                 headless=headless,
                 physics_dt=physics_dt,
                 max_steps=max_steps,
+                seed=self._base_seed,
             )
         )
         self._sensor_mgr = SensorManager()
@@ -246,12 +259,17 @@ class FusionGymEnv:
     def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[dict, dict]:
         self._ensure_init()
         if seed is not None:
-            self._kernel = SimulationKernel(KernelConfig(headless=True, seed=seed))
-            self._kernel.init(
-                sensor_manager=self._sensor_mgr,
-                agent_manager=self._agent_mgr,
-            )
+            # Rebuild kernel with new seed only if a fresh seed is passed;
+            # kernel.reset() otherwise derives deterministic per-episode RNG.
+            self._base_seed = int(seed)
+            self._kernel.close()
+            self._kernel = SimulationKernel(KernelConfig(headless=True, seed=self._base_seed))
+            self._initialized = False
+            self._ensure_init()
         self._kernel.reset()
+        # ObservationManager shares kernel sensor_rng so obs noise is
+        # episode-isolated + reproducible from base_seed.
+        self._obs_mgr.set_rng(self._kernel.sensor_rng)
         self._obs_mgr.reset()
         self._action_mgr.reset()
         self._reward_mgr.reset()

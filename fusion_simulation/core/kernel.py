@@ -5,9 +5,12 @@ import logging
 import os
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
+
+import numpy as np
 
 from fusion_simulation.core.clock import SimClock, SimTime
 from fusion_simulation.core.ecs import (
@@ -18,6 +21,10 @@ from fusion_simulation.core.ecs import (
     Transform,
 )
 from fusion_simulation.core.event_bus import EventBus, EventKind
+from fusion_simulation.core.fault import FaultIsolationManager, FaultLevel
+from fusion_simulation.core.plugin import PluginManager
+from fusion_simulation.core.resource import ResourceQuotaManager
+from fusion_simulation.core.rng import derive_seeds, make_rng, seed_everything
 from fusion_simulation.core.world_state import EntitySnapshot, WorldState
 from fusion_simulation.physics.base import PhysicsConfig, PhysicsEngine
 from fusion_simulation.physics.pybullet_engine import PyBulletEngine
@@ -95,7 +102,8 @@ class SimulationKernel:
         self._sensor_manager: Any = None
         self._agent_manager: Any = None
         self._state = KernelState.UNINITIALIZED
-        self._snapshots: dict[str, WorldState] = {}
+        self._snapshots: OrderedDict[str, WorldState] = OrderedDict()
+        self._snapshot_physics: dict[str, int | None] = {}
         self._frame_result: FrameResult = FrameResult()
         self._body_entity_map: dict[int, EntityId] = {}
         self._run_task: asyncio.Task | None = None
@@ -104,6 +112,14 @@ class SimulationKernel:
         self._stepping = False
         self._last_error: str | None = None
         self._start_time = 0.0
+        self._fault = FaultIsolationManager()
+        self._quota = ResourceQuotaManager()
+        self._plugins = PluginManager()
+        self._base_seed: int = int(self._config.seed)
+        self._episode_count: int = 0
+        self._rng: np.random.Generator | None = None
+        self._sensor_rng: np.random.Generator | None = None
+        self._agent_rng: np.random.Generator | None = None
         if not self._config.mlx_api_key:
             logger.warning(
                 "KernelConfig.mlx_api_key 为空 (env FUSION_MLX_API_KEY 未设置); fusion-mlx 开启鉴权时 agent 调用将 401"
@@ -176,6 +192,44 @@ class SimulationKernel:
     def last_error(self) -> str | None:
         return self._last_error
 
+    @property
+    def fault_manager(self) -> FaultIsolationManager:
+        return self._fault
+
+    @property
+    def quota_manager(self) -> ResourceQuotaManager:
+        return self._quota
+
+    @property
+    def plugin_manager(self) -> PluginManager:
+        return self._plugins
+
+    @property
+    def base_seed(self) -> int:
+        return self._base_seed
+
+    @property
+    def episode_seed(self) -> int:
+        # Deterministic per-episode seed: base + episode_count. Two kernels
+        # with same base_seed produce identical episode N seeds across nodes.
+        return self._base_seed + self._episode_count
+
+    @property
+    def rng(self) -> np.random.Generator:
+        # Kernel-scoped Generator for non-physics randomness (spawn jitter etc).
+        # Lazily created at init; re-derived each reset() so episodes isolate.
+        if self._rng is None:
+            self._rng = make_rng(self.episode_seed)
+        return self._rng
+
+    @property
+    def sensor_rng(self) -> np.random.Generator | None:
+        return self._sensor_rng
+
+    @property
+    def agent_rng(self) -> np.random.Generator | None:
+        return self._agent_rng
+
     def uptime(self) -> float:
         if self._start_time <= 0:
             return 0.0
@@ -200,16 +254,28 @@ class SimulationKernel:
             try:
                 self._physics = physics or PyBulletEngine()
                 self._physics.init(config=phys_config, headless=self._config.headless)
+                # Global seed AFTER physics init (physics seeds its own client RNG).
+                # Subsystem RNGs derive from base_seed so sensor/agent noise is
+                # reproducible yet isolated from physics + each other.
+                seed_everything(self._base_seed)
+                child_seeds = derive_seeds(self._base_seed, 3, offset=1)
+                self._rng = make_rng(child_seeds[0])
+                self._sensor_rng = make_rng(child_seeds[1])
+                self._agent_rng = make_rng(child_seeds[2])
                 self._render = render or PyBulletRender(physics_engine=self._physics)
                 self._render.init(RenderConfig())
                 self._scene = SceneResourceManager(self._ecs, self._physics)
                 if sensor_manager is not None:
                     self._sensor_manager = sensor_manager
                     self._sensor_manager.set_physics_engine(self._physics)
+                    if hasattr(self._sensor_manager, "set_rng"):
+                        self._sensor_manager.set_rng(self._sensor_rng)
                 else:
                     from fusion_simulation.sensor.manager import SensorManager
 
                     self._sensor_manager = SensorManager(physics_engine=self._physics)
+                    if hasattr(self._sensor_manager, "set_rng"):
+                        self._sensor_manager.set_rng(self._sensor_rng)
                 if agent_manager is not None:
                     self._agent_manager = agent_manager
                 else:
@@ -286,19 +352,37 @@ class SimulationKernel:
             t0 = time.monotonic()
             if self._clock.paused:
                 return self._frame_result
+            self._quota.step_begin()
+            self._plugins.emit("pre_step", self)
             self._events.emit(
                 EventKind.PHYSICS_PRE_STEP,
                 {"sim_time": self._clock.sim_time, "frame": self._clock.frame_count},
             )
-            t_phys = time.monotonic()
-            if self._physics is not None and self._physics.is_initialized:
-                self._physics.step()
-            physics_ms = (time.monotonic() - t_phys) * 1000.0
-
             sim_time_obj = self._clock.tick()
 
-            self._sync_ecs_from_physics()
-            self._sync_world_state()
+            t_phys = time.monotonic()
+            if self._physics is not None and self._physics.is_initialized:
+                if self._fault.should_skip("physics", "engine"):
+                    logger.debug("physics engine isolated, skipping step")
+                else:
+                    try:
+                        self._physics.step()
+                    except Exception as e:
+                        self._fault.report_fault("physics", "engine", FaultLevel.ERROR, str(e))
+                        logger.exception("physics.step failed; subsystem isolated this frame")
+            physics_ms = (time.monotonic() - t_phys) * 1000.0
+
+            try:
+                self._sync_ecs_from_physics()
+            except Exception as e:
+                self._fault.report_fault("physics", "ecs_sync", FaultLevel.ERROR, str(e))
+                logger.exception("ECS sync from physics failed")
+
+            try:
+                self._sync_world_state()
+            except Exception as e:
+                self._fault.report_fault("core", "world_sync", FaultLevel.ERROR, str(e))
+                logger.exception("world state sync failed")
 
             self._events.emit(
                 EventKind.PHYSICS_POST_STEP,
@@ -307,30 +391,54 @@ class SimulationKernel:
 
             t_sensor = time.monotonic()
             if self._sensor_manager is not None:
-                self._sensor_manager.set_sim_time(sim_time_obj.sim_time)
-                self._sensor_manager.update()
+                if self._fault.should_skip("sensor", "manager"):
+                    logger.debug("sensor manager isolated, skipping update")
+                else:
+                    try:
+                        self._sensor_manager.set_sim_time(sim_time_obj.sim_time)
+                        self._sensor_manager.update()
+                    except Exception as e:
+                        self._fault.report_fault("sensor", "manager", FaultLevel.ERROR, str(e))
+                        logger.exception("sensor_manager.update failed; subsystem isolated this frame")
             sensor_ms = (time.monotonic() - t_sensor) * 1000.0
             self._events.emit(EventKind.SENSOR_DATA_READY, {"sim_time": sim_time_obj.sim_time})
 
             t_agent = time.monotonic()
+            actions: dict[str, list[float]] = {}
             if self._agent_manager is not None:
-                if self._scheduler is not None:
-                    actions = self._scheduler.tick(sim_time_obj.sim_time)
+                if self._fault.should_skip("agent", "manager"):
+                    logger.debug("agent manager isolated, skipping step_all")
                 else:
-                    actions = self._agent_manager.step_all()
-                self._apply_actions(actions)
-                if actions:
-                    self._events.emit(EventKind.ACTION_APPLIED, {"actions": list(actions.keys())})
+                    try:
+                        if self._scheduler is not None:
+                            actions = self._scheduler.tick(sim_time_obj.sim_time)
+                        else:
+                            actions = self._agent_manager.step_all()
+                        self._apply_actions(actions)
+                        if actions:
+                            self._events.emit(EventKind.ACTION_APPLIED, {"actions": list(actions.keys())})
+                    except Exception as e:
+                        self._fault.report_fault("agent", "manager", FaultLevel.ERROR, str(e))
+                        logger.exception("agent_manager.step_all failed; subsystem isolated this frame")
             agent_ms = (time.monotonic() - t_agent) * 1000.0
 
             t_render = time.monotonic()
             if self._clock.should_render() and self._render is not None:
-                self._events.emit(EventKind.RENDER_PRE_FRAME, {"sim_time": sim_time_obj.sim_time})
-                self._render.render()
-                self._events.emit(EventKind.RENDER_POST_FRAME, {"sim_time": sim_time_obj.sim_time})
+                if self._fault.should_skip("render", "engine"):
+                    logger.debug("render engine isolated, skipping render")
+                else:
+                    try:
+                        self._events.emit(EventKind.RENDER_PRE_FRAME, {"sim_time": sim_time_obj.sim_time})
+                        self._render.render()
+                        self._events.emit(EventKind.RENDER_POST_FRAME, {"sim_time": sim_time_obj.sim_time})
+                    except Exception as e:
+                        self._fault.report_fault("render", "engine", FaultLevel.ERROR, str(e))
+                        logger.exception("render.render failed; subsystem isolated this frame")
             render_ms = (time.monotonic() - t_render) * 1000.0
 
             total_ms = (time.monotonic() - t0) * 1000.0
+            self._quota.step_end()
+            self._plugins.emit("post_step", self)
             self._frame_result = FrameResult(
                 sim_time=sim_time_obj.sim_time,
                 frame_count=sim_time_obj.frame_count,
@@ -449,13 +557,27 @@ class SimulationKernel:
             self._world = WorldState()
             self._clock.reset()
             self._body_entity_map.clear()
+            self._snapshots.clear()
+            self._snapshot_physics.clear()
+            self._episode_count += 1
+            # Re-derive per-episode RNG so each episode gets isolated but
+            # deterministic noise (episode_seed = base + count).
+            ep = self.episode_seed
+            child_seeds = derive_seeds(self._base_seed, 3, offset=1 + self._episode_count)
+            self._rng = make_rng(child_seeds[0])
+            self._sensor_rng = make_rng(child_seeds[1])
+            self._agent_rng = make_rng(child_seeds[2])
             if self._sensor_manager is not None:
                 self._sensor_manager.reset()
+                if hasattr(self._sensor_manager, "set_rng"):
+                    self._sensor_manager.set_rng(self._sensor_rng)
             if self._agent_manager is not None:
                 self._agent_manager.reset_all()
+            self._fault.reset()
+            self._quota.reset()
             self._state = KernelState.INITIALIZED
             self._events.emit(EventKind.SIM_RESET)
-            logger.info("SimulationKernel reset")
+            logger.info("SimulationKernel reset (episode=%d episode_seed=%d)", self._episode_count, ep)
 
     def close(self) -> None:
         with self._lock:
@@ -465,10 +587,17 @@ class SimulationKernel:
         if self._run_task is not None and not self._run_task.done():
             self._run_task.cancel()
             try:
-                loop = asyncio.get_running_loop()
-                loop.run_until_complete(self._await_cancelled(self._run_task))
+                asyncio.get_running_loop()
+                loop_running = True
             except RuntimeError:
-                pass
+                loop_running = False
+            if loop_running:
+                asyncio.ensure_future(self._await_cancelled(self._run_task))
+            else:
+                try:
+                    asyncio.run(self._await_cancelled(self._run_task))
+                except RuntimeError:
+                    logger.debug("No usable event loop to await cancelled run_task during close")
             self._run_task = None
         with self._lock:
             self._events.emit(EventKind.SIM_STOPPED, {"reason": "close"})
@@ -534,6 +663,7 @@ class SimulationKernel:
             raise RuntimeError("SceneResourceManager not available. Call init() first.")
         result = self._scene.load_scene(scene_config)
         self._sync_scene_entities()
+        self._check_body_quota()
         self._events.emit(EventKind.SCENE_LOADED, {"scene": scene_config.name})
         return result
 
@@ -542,6 +672,7 @@ class SimulationKernel:
             raise RuntimeError("SceneResourceManager not available. Call init() first.")
         result = self._scene.load_builtin(name)
         self._sync_scene_entities()
+        self._check_body_quota()
         self._events.emit(EventKind.SCENE_LOADED, {"scene": name})
         return result
 
@@ -550,8 +681,42 @@ class SimulationKernel:
             raise RuntimeError("SceneResourceManager not available. Call init() first.")
         result = self._scene.load_scene_from_file(path)
         self._sync_scene_entities()
+        self._check_body_quota()
         self._events.emit(EventKind.SCENE_LOADED, {"scene": path})
         return result
+
+    def _check_body_quota(self) -> None:
+        if self._physics is None or not hasattr(self._physics, "get_all_body_ids"):
+            return
+        try:
+            bodies = self._physics.get_all_body_ids()
+        except Exception:
+            logger.exception("get_all_body_ids failed during body quota check")
+            return
+        if not self._quota.check_body_limit(len(bodies)):
+            logger.error(
+                "Body quota exceeded: %d >= %d; scene load accepted but further body adds will be rejected",
+                len(bodies),
+                self._quota.quota.max_bodies,
+            )
+
+    def spawn_agent(self, config: Any) -> Any:
+        if self._agent_manager is None:
+            raise RuntimeError("AgentManager not available. Call init() first.")
+        current = self._agent_manager.agent_count
+        if not self._quota.check_agent_limit(current):
+            logger.error("Agent spawn rejected: quota reached %d/%d", current, self._quota.quota.max_agents)
+            raise RuntimeError(f"Agent quota reached ({current}/{self._quota.quota.max_agents})")
+        return self._agent_manager.add_agent(config)
+
+    def spawn_sensor(self, config: Any) -> Any:
+        if self._sensor_manager is None:
+            raise RuntimeError("SensorManager not available. Call init() first.")
+        current = self._sensor_manager.sensor_count
+        if not self._quota.check_sensor_limit(current):
+            logger.error("Sensor spawn rejected: quota reached %d/%d", current, self._quota.quota.max_sensors)
+            raise RuntimeError(f"Sensor quota reached ({current}/{self._quota.quota.max_sensors})")
+        return self._sensor_manager.add_sensor(config)
 
     def _sync_scene_entities(self) -> None:
         if self._scene is None:
@@ -576,12 +741,22 @@ class SimulationKernel:
             snap = self._world.snapshot()
             snap_id = name or f"snapshot_{self._clock.frame_count}"
             self._snapshots[snap_id] = snap
+            self._snapshots.move_to_end(snap_id)
+            phys_state: int | None = None
+            if self._physics is not None and self._physics.is_initialized:
+                phys_state = self._physics.save_state()
+            self._snapshot_physics[snap_id] = phys_state
             if len(self._snapshots) > self._MAX_SNAPSHOTS:
                 oldest = next(iter(self._snapshots))
                 del self._snapshots[oldest]
+                self._snapshot_physics.pop(oldest, None)
                 logger.info("Evicted oldest snapshot: %s", oldest)
             self._events.emit(EventKind.SNAPSHOT_SAVED, {"snapshot_id": snap_id})
-            logger.info("Snapshot saved: %s", snap_id)
+            logger.info(
+                "Snapshot saved: %s (physics_state=%s)",
+                snap_id,
+                phys_state,
+            )
             return snap_id
 
     def restore_snapshot(self, snap_id: str) -> bool:
@@ -592,6 +767,19 @@ class SimulationKernel:
             self._world.restore(self._snapshots[snap_id])
             self._clock._sim_time = self._world.sim_time
             self._clock._frame_count = self._world.frame_count
+            phys_state = self._snapshot_physics.get(snap_id)
+            if (
+                phys_state is not None
+                and self._physics is not None
+                and self._physics.is_initialized
+                and hasattr(self._physics, "restore_state")
+            ):
+                restored = self._physics.restore_state(phys_state)
+                if not restored:
+                    logger.warning(
+                        "Physics state restore failed for snapshot %s, ECS only restored",
+                        snap_id,
+                    )
             for eid_str, esnap in self._world.entities.items():
                 eid = EntityId(value=eid_str)
                 if eid not in self._ecs._entities:
@@ -608,6 +796,7 @@ class SimulationKernel:
                 if articulation is not None:
                     articulation.joint_positions = list(esnap.joint_positions)
                     articulation.joint_velocities = list(esnap.joint_velocities)
+            self._snapshots.move_to_end(snap_id)
             self._events.emit(EventKind.SNAPSHOT_RESTORED, {"snapshot_id": snap_id})
             logger.info("Snapshot restored: %s", snap_id)
             return True
@@ -617,6 +806,7 @@ class SimulationKernel:
             if snap_id not in self._snapshots:
                 return False
             del self._snapshots[snap_id]
+            self._snapshot_physics.pop(snap_id, None)
             logger.info("Snapshot deleted: %s", snap_id)
             return True
 
@@ -626,6 +816,10 @@ class SimulationKernel:
     def _sync_world_state(self) -> None:
         self._world.sim_time = self._clock.sim_time
         self._world.frame_count = self._clock.frame_count
+        live_eids = {str(eid) for eid in self._ecs.list_entities()}
+        for stale in list(self._world.entities.keys()):
+            if stale not in live_eids:
+                del self._world.entities[stale]
         for eid in self._ecs.list_entities():
             transform = self._ecs.get_component(eid, Transform)
             rigid_body = self._ecs.get_component(eid, RigidBody)
@@ -655,6 +849,8 @@ class SimulationKernel:
             "entity_count": self._ecs.entity_count(),
             "real_time_factor": self._clock.real_time_factor(),
             "paused": self._clock.paused,
+            "fault": self._fault.get_status(),
+            "quota": self._quota.get_status(),
         }
 
     def _apply_actions(self, actions: dict[str, list[float]]) -> None:

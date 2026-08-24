@@ -107,6 +107,16 @@ message SensorDataResponse {
   int32 frame_count = 2;
   string sensor_name = 3;
   string data_json = 4;
+  // Binary payload: msgpack/json-with-native-numpy for small structs, raw
+  // image bytes for cameras. Avoids json.dumps(default=str) text bloat that
+  // exceeded gRPC 4MB max for 640x480 frames (audit A4).
+  bytes data_payload = 5;
+  // Encoding hint so client can decode data_payload: "json_native" | "raw_rgb"
+  // | "raw_depth" | "empty".
+  string encoding = 6;
+  int32 width = 7;
+  int32 height = 8;
+  int32 channels = 9;
 }
 
 message SimStateRequest {
@@ -118,4 +128,7 @@ message SimStateResponse {
   double sim_time = 1;
   int32 frame_count = 2;
   string state_json = 3;
+  // Binary state payload (json_native encoding) — avoids default=str numpy text.
+  bytes state_payload = 4;
+  string encoding = 5;
 }

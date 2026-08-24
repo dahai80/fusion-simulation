@@ -99,18 +99,24 @@ class TestPolicyClientCoverage:
 
     def test_parse_action_too_short(self):
         p = PolicyClient()
-        result = p._parse_action("[0.1]", 3)
+        result, ok = p._parse_action("[0.1]", 3)
         assert result == [0.1, 0.0, 0.0]
+        assert ok is True
+        p.close()
 
     def test_parse_action_too_long(self):
         p = PolicyClient()
-        result = p._parse_action("[0.1, 0.2, 0.3, 0.4]", 2)
+        result, ok = p._parse_action("[0.1, 0.2, 0.3, 0.4]", 2)
         assert result == [0.1, 0.2]
+        assert ok is True
+        p.close()
 
     def test_parse_action_invalid_json(self):
         p = PolicyClient()
-        result = p._parse_action("not valid json", 3)
+        result, ok = p._parse_action("not valid json", 3)
         assert result == [0.0, 0.0, 0.0]
+        assert ok is False
+        p.close()
 
     def test_avg_latency_no_requests(self):
         p = PolicyClient()
@@ -736,7 +742,7 @@ class TestEvaluatorCoverage:
     async def test_run_episode_exception(self):
         evaluator = SimulationEvaluator()
         with patch("asyncio.sleep", side_effect=RuntimeError("crash")):
-            result = await evaluator._run_episode("test", "lerobot")
+            result = await evaluator._run_episode("test", "lerobot", 10, 0.5)
             assert result["success"] is False
 
     @pytest.mark.asyncio
@@ -744,7 +750,7 @@ class TestEvaluatorCoverage:
         evaluator = SimulationEvaluator()
         kernel = MagicMock()
         kernel.agent_manager = None
-        result = await evaluator._run_kernel_episode(kernel, "", 10)
+        result = await evaluator._run_kernel_episode(kernel, "", 10, 0.5)
         assert result["steps"] == 10
 
     @pytest.mark.asyncio
@@ -756,7 +762,7 @@ class TestEvaluatorCoverage:
         mock_agent.cumulative_reward = 0.8
         mock_am.get_agent.return_value = mock_agent
         kernel.agent_manager = mock_am
-        result = await evaluator._run_kernel_episode(kernel, "bot", 10)
+        result = await evaluator._run_kernel_episode(kernel, "bot", 10, 0.0)
         assert result["success"] is True
         assert result["cumulative_reward"] == 0.8
 
@@ -765,7 +771,7 @@ class TestEvaluatorCoverage:
         evaluator = SimulationEvaluator()
         kernel = MagicMock()
         kernel.step.side_effect = Exception("boom")
-        result = await evaluator._run_kernel_episode(kernel, "", 10)
+        result = await evaluator._run_kernel_episode(kernel, "", 10, 0.5)
         assert result["success"] is False
 
     def test_generate_report_markdown(self):
@@ -2043,6 +2049,9 @@ class TestRemainingGaps:
                 return None
 
             def get_contact_points(self, body_id):
+                return []
+
+            def get_all_body_ids(self):
                 return []
 
             @property

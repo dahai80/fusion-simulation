@@ -159,6 +159,9 @@ def main():
     )
     svc_start.add_argument("--mlx-url", default=_DEFAULT_MLX_URL, help="fusion-mlx base URL (env: FUSION_MLX_URL)")
     svc_start.add_argument("--api-key", default=_DEFAULT_API_KEY, help="fusion-mlx API key (env: FUSION_MLX_API_KEY)")
+    svc_start.add_argument(
+        "--instance-id", default="", help="Multi-node instance id (env: FUSION_SIM_INSTANCE_ID); default random uuid"
+    )
     svc_sub.add_parser("stop", help="Stop simulation server")
     svc_health = svc_sub.add_parser("health", help="Check service health")
     svc_health.add_argument("--url", default="http://127.0.0.1:11456", help="Metrics URL")
@@ -441,15 +444,26 @@ async def _cmd_train(args):
         if not dataset_info:
             print(f"Dataset '{args.dataset}' not found.", file=sys.stderr)
             sys.exit(1)
-        samples = mgr.collect_samples(args.dataset, num_samples=100)
+        samples = mgr.load_samples(args.dataset)
         if not samples:
-            print(f"Dataset '{args.dataset}' has no samples to train on.", file=sys.stderr)
+            print(
+                f"Dataset '{args.dataset}' has no real samples (observation/action) to train on. "
+                f"Import real data first; refusing to train on synthetic np.random data.",
+                file=sys.stderr,
+            )
             sys.exit(1)
-        print(f"Training {args.model_name} on {len(samples)} samples ({args.epochs} epochs, lr={args.lr})...")
+        print(f"Training {args.model_name} on {len(samples)} real samples ({args.epochs} epochs, lr={args.lr})...")
         result = await trainer.train(dataset=samples, epochs=args.epochs, lr=args.lr)
 
     simulated_tag = " [SIMULATED]" if result.get("simulated") else ""
+    deployable = result.get("deployable", not result.get("simulated", False))
     print(f"Training completed{simulated_tag}: loss={result['final_loss']:.4f}, time={result['elapsed_seconds']}s")
+    if result.get("simulated") or not deployable:
+        print(
+            "WARNING: result is NOT deployable (simulated loss / no real gradient). "
+            "Policy was not learned — fix fusion-mlx connectivity (FUSION_MLX_URL) before deploying.",
+            file=sys.stderr,
+        )
     await trainer.close()
 
 
@@ -489,22 +503,46 @@ def _cmd_service_start(args):
     metrics_config = MetricsConfig(port=args.metrics_port)
     gateway_config = None
     if args.gateway_url:
-        gateway_config = GatewayConfig(
+        gw_kwargs = dict(
             gateway_url=args.gateway_url,
             enabled=True,
             service_port=args.port,
             metrics_port=args.metrics_port,
         )
+        if args.instance_id:
+            gw_kwargs["instance_id"] = args.instance_id
+        gateway_config = GatewayConfig(**gw_kwargs)
     server = SimulationServer(svc_config, kernel_config, gateway_config, metrics_config)
+    import atexit
+    import signal
+
+    def _graceful_shutdown(signum=None, frame=None):
+        logger.info("Received signal %s, shutting down SimulationServer", signum)
+        server.stop()
+        print("Server stopped (signal)")
+
+    atexit.register(server.stop)
+    signal.signal(signal.SIGTERM, _graceful_shutdown)
     server.start()
-    logger.info("SimulationServer started on %s:%d (metrics on :%d)", args.host, args.port, args.metrics_port)
-    print(f"SimulationServer started on {args.host}:{args.port} (metrics on :{args.metrics_port})")
+    actual_port = server.actual_port
+    logger.info(
+        "SimulationServer started on %s:%d (actual_port=%d, metrics on :%d)",
+        args.host,
+        args.port,
+        actual_port,
+        args.metrics_port,
+    )
+    print(f"SimulationServer started on {args.host}:{actual_port} (metrics on :{args.metrics_port})")
     if args.gui:
         from fusion_simulation.gui import GUIConfig
         from fusion_simulation.gui.app import run_dashboard
 
         gui_config = GUIConfig(
-            port=args.gui_port, grpc_host=args.host, grpc_port=args.port, mlx_url=args.mlx_url, mlx_api_key=args.api_key
+            port=args.gui_port,
+            grpc_host=args.host,
+            grpc_port=actual_port,
+            mlx_url=args.mlx_url,
+            mlx_api_key=args.api_key,
         )
         print(f"Web Dashboard: http://0.0.0.0:{args.gui_port}")
         run_dashboard(server, gui_config)

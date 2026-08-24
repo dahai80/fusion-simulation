@@ -85,6 +85,17 @@ class PhysicsEngine(ABC):
     @abstractmethod
     def get_contact_points(self, body_id: int) -> list[dict[str, Any]]: ...
 
+    @abstractmethod
+    def get_all_body_ids(self) -> list[int]: ...
+
     @property
     @abstractmethod
     def is_initialized(self) -> bool: ...
+
+    def save_state(self) -> int | None:
+        logger.debug("save_state not supported by %s, returning None", type(self).__name__)
+        return None
+
+    def restore_state(self, state_id: int) -> bool:
+        logger.debug("restore_state not supported by %s", type(self).__name__)
+        return False

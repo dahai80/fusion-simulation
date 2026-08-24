@@ -20,6 +20,10 @@ class ImuSensor(SensorBase):
         self._linear_acceleration: list[float] = [0.0, 0.0, -9.81]
         self._angular_velocity: list[float] = [0.0, 0.0, 0.0]
         self._orientation_quat: list[float] = [0.0, 0.0, 0.0, 1.0]
+        self._rng: np.random.Generator | None = None
+
+    def set_rng(self, rng: np.random.Generator | None) -> None:
+        self._rng = rng
 
     @property
     def linear_acceleration(self) -> list[float]:
@@ -71,17 +75,20 @@ class ImuSensor(SensorBase):
     def _add_noise(self, values: list[float], scale: float) -> list[float]:
         if scale <= 0:
             return values
+        if self._rng is not None:
+            noise = self._rng.normal(0, scale, size=len(values))
+            return [v + float(n) for v, n in zip(values, noise)]
+        logger.debug("ImuSensor noise using unseded global np.random — set_rng not called")
         return [v + float(np.random.normal(0, scale)) for v in values]
 
     def _resolve_body_id(self, physics_engine: Any, entity_id: str) -> int | None:
         try:
             body_ids = physics_engine.get_all_body_ids()
             for bid in body_ids:
-                state = physics_engine.get_body_state(bid)
-                if state is not None and str(bid) == entity_id:
+                if str(bid) == entity_id:
                     return bid
         except Exception:
-            pass
+            logger.exception("ImuSensor _resolve_body_id failed for entity_id=%s", entity_id)
         return None
 
     def get_observation(self) -> dict[str, Any]:

@@ -22,6 +22,7 @@ class BCTrainer:
         model: str = _DEFAULT_MODEL,
         api_key: str = "",
         allow_simulated: bool = False,
+        seed: int = 42,
     ) -> None:
         self.mlx_url = mlx_url.rstrip("/")
         self.model = model
@@ -33,6 +34,8 @@ class BCTrainer:
         self._history: dict[str, list[float]] = {"loss": [], "accuracy": []}
         self._simulated_steps = 0
         self._client = httpx.AsyncClient(timeout=120.0)
+        self._rng = np.random.default_rng(int(seed))
+        logger.info("BCTrainer created: seed=%d model=%s allow_simulated=%s", int(seed), model, allow_simulated)
 
     async def train_step(
         self, observations: list[list[float]], actions: list[list[float]], lr: float = 1e-4
@@ -71,8 +74,8 @@ class BCTrainer:
             self._simulated_steps += 1
             logger.warning("Train step failed, using simulated loss [SIMULATED] #%d: %s", self._simulated_steps, e)
             result = {
-                "loss": float(np.random.random() * 0.5),
-                "accuracy": float(np.random.random() * 0.3),
+                "loss": float(self._rng.random() * 0.5),
+                "accuracy": float(self._rng.random() * 0.3),
                 "simulated": True,
             }
         self._history["loss"].append(result.get("loss", 0.0))
@@ -104,12 +107,21 @@ class BCTrainer:
             tag = " [SIMULATED]" if self._simulated_steps else ""
             logger.info("Epoch %d/%d: loss=%.4f%s", epoch + 1, epochs, avg_loss, tag)
         elapsed = time.time() - start_time
+        simulated = self._simulated_steps > 0
+        if simulated:
+            logger.error(
+                "BCTrainer.train COMPLETED with %d simulated steps — result NOT deployable "
+                "(fake loss, no real gradient). Set allow_simulated=False and fix fusion-mlx "
+                "connectivity to get a deployable policy.",
+                self._simulated_steps,
+            )
         return {
             "status": "completed",
             "epochs": epochs,
             "final_loss": self._history["loss"][-1] if self._history["loss"] else 0.0,
             "simulated_steps": self._simulated_steps,
-            "simulated": self._simulated_steps > 0,
+            "simulated": simulated,
+            "deployable": not simulated,
             "elapsed_seconds": round(elapsed, 2),
             "history": self._history,
         }
@@ -133,10 +145,16 @@ class BCTrainer:
             self._history["loss"].append(max(0.0, 1.0 - epoch_reward / max(steps_per_epoch, 1)))
             self._history["accuracy"].append(min(1.0, epoch_reward / max(steps_per_epoch, 1)))
         elapsed = time.time() - start_time
+        logger.warning(
+            "train_with_kernel: loss is a reward-derived proxy (1 - reward), NOT a model gradient. "
+            "Result is a roll-out metric, not a deployable learned policy."
+        )
         return {
             "status": "completed",
             "epochs": epochs,
             "final_loss": self._history["loss"][-1] if self._history["loss"] else 0.0,
+            "simulated": False,
+            "deployable": False,
             "elapsed_seconds": round(elapsed, 2),
             "history": self._history,
         }
@@ -146,6 +164,7 @@ class BCTrainer:
 
     def reset(self) -> None:
         self._history = {"loss": [], "accuracy": []}
+        self._simulated_steps = 0
 
     async def close(self) -> None:
         await self._client.aclose()

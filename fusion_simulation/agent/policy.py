@@ -10,6 +10,8 @@ from typing import Any
 
 import httpx
 
+from fusion_simulation.core.rng import numpy_to_native
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,6 +24,10 @@ _DEFAULT_ENDPOINT = _default_endpoint()
 _DEFAULT_MODEL = os.environ.get("FUSION_MLX_MODEL", "Qwen3.5-4B-bf16")
 _DEFAULT_ROUTE = os.environ.get("FUSION_MLX_ROUTE", "mlx")
 _REQUEST_TIMEOUT = 30.0
+_CIRCUIT_FAIL_THRESHOLD = 5
+_CIRCUIT_COOLDOWN_SEC = 10.0
+_CIRCUIT_BACKOFF_BASE = 0.5
+_MIN_INFER_INTERVAL_SEC = 0.0
 
 
 # Callers: AgentManager.add_agent, server._rpc_add_agent
@@ -44,6 +50,9 @@ class PolicyClient:
         self._available: bool = False
         self._failure_count: int = 0
         self._last_failure: str = ""
+        self._consecutive_failures: int = 0
+        self._circuit_open_until: float = 0.0
+        self._last_infer_time: float = 0.0
 
     @property
     def endpoint(self) -> str:
@@ -72,11 +81,63 @@ class PolicyClient:
         logger.info("PolicyClient availability check: %s", self._available)
         return self._available
 
+    def _circuit_open(self) -> bool:
+        now = time.monotonic()
+        if now < self._circuit_open_until:
+            return True
+        return False
+
+    def _record_success(self) -> None:
+        if self._consecutive_failures > 0:
+            logger.info("PolicyClient circuit CLOSED after %d consecutive failures", self._consecutive_failures)
+        self._consecutive_failures = 0
+        self._circuit_open_until = 0.0
+
+    def _record_failure(self, context: str, exc: BaseException | None = None) -> None:
+        self._failure_count += 1
+        self._consecutive_failures += 1
+        self._last_failure = str(exc) if exc is not None else context
+        self._available = False
+        if self._consecutive_failures >= _CIRCUIT_FAIL_THRESHOLD:
+            backoff = min(
+                _CIRCUIT_COOLDOWN_SEC,
+                _CIRCUIT_BACKOFF_BASE * (2 ** (self._consecutive_failures - _CIRCUIT_FAIL_THRESHOLD)),
+            )
+            self._circuit_open_until = time.monotonic() + backoff
+            logger.error(
+                "PolicyClient circuit OPEN for %.1fs after %d consecutive failures (context=%s): %s",
+                backoff,
+                self._consecutive_failures,
+                context,
+                self._last_failure,
+            )
+        else:
+            logger.error(
+                "PolicyClient %s FAILED (#%d consec=%d): %s — emitting ZERO action (safe default), agent uncontrolled",
+                context,
+                self._failure_count,
+                self._consecutive_failures,
+                self._last_failure,
+            )
+
+    def _rate_limit_wait(self) -> None:
+        if _MIN_INFER_INTERVAL_SEC <= 0:
+            return
+        now = time.monotonic()
+        delta = _MIN_INFER_INTERVAL_SEC - (now - self._last_infer_time)
+        if delta > 0:
+            time.sleep(delta)
+        self._last_infer_time = time.monotonic()
+
     def predict(self, observation: dict[str, Any], action_dim: int = 0) -> list[float]:
+        if self._circuit_open():
+            logger.debug("PolicyClient circuit open, short-circuiting predict -> zeros")
+            return [0.0] * max(action_dim, 1)
+        self._rate_limit_wait()
         self._request_count += 1
         t0 = time.monotonic()
         try:
-            obs_str = json.dumps(observation, default=str, ensure_ascii=False)
+            obs_str = json.dumps(numpy_to_native(observation), ensure_ascii=False)
             payload = {
                 "model": self._model_name,
                 "messages": [
@@ -96,18 +157,15 @@ class PolicyClient:
             resp.raise_for_status()
             data = resp.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            action = self._parse_action(content, action_dim)
-            self._last_action = action
-            self._available = True
+            action, parsed_ok = self._parse_action(content, action_dim)
+            if not parsed_ok:
+                self._record_failure("predict_parse", None)
+            else:
+                self._last_action = action
+                self._available = True
+                self._record_success()
         except Exception as e:
-            self._failure_count += 1
-            self._last_failure = str(e)
-            self._available = False
-            logger.error(
-                "PolicyClient predict FAILED (#%d): %s — emitting ZERO action (safe default), agent uncontrolled",
-                self._failure_count,
-                e,
-            )
+            self._record_failure("predict", e)
             action = [0.0] * max(action_dim, 1)
         latency = time.monotonic() - t0
         self._total_latency += latency
@@ -120,6 +178,10 @@ class PolicyClient:
         prompt: str = "",
         action_dim: int = 0,
     ) -> list[float]:
+        if self._circuit_open():
+            logger.debug("PolicyClient circuit open, short-circuiting infer_from_image -> zeros")
+            return [0.0] * max(action_dim, 1)
+        self._rate_limit_wait()
         self._request_count += 1
         t0 = time.monotonic()
         try:
@@ -156,18 +218,15 @@ class PolicyClient:
             resp.raise_for_status()
             data = resp.json()
             text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            action = self._parse_action(text, action_dim)
-            self._last_action = action
-            self._available = True
+            action, parsed_ok = self._parse_action(text, action_dim)
+            if not parsed_ok:
+                self._record_failure("infer_from_image_parse", None)
+            else:
+                self._last_action = action
+                self._available = True
+                self._record_success()
         except Exception as e:
-            self._failure_count += 1
-            self._last_failure = str(e)
-            self._available = False
-            logger.error(
-                "PolicyClient infer_from_image FAILED (#%d): %s — emitting ZERO action (safe default), agent uncontrolled",
-                self._failure_count,
-                e,
-            )
+            self._record_failure("infer_from_image", e)
             action = [0.0] * max(action_dim, 1)
         latency = time.monotonic() - t0
         self._total_latency += latency
@@ -180,6 +239,9 @@ class PolicyClient:
         prompt: str = "",
         action_dim: int = 0,
     ) -> list[float]:
+        if self._circuit_open():
+            logger.debug("PolicyClient circuit open, short-circuiting infer_from_image_async -> zeros")
+            return [0.0] * max(action_dim, 1)
         if self._async_client is None:
             self._async_client = httpx.AsyncClient(timeout=_REQUEST_TIMEOUT)
         self._request_count += 1
@@ -215,18 +277,15 @@ class PolicyClient:
             resp.raise_for_status()
             data = resp.json()
             text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            action = self._parse_action(text, action_dim)
-            self._last_action = action
-            self._available = True
+            action, parsed_ok = self._parse_action(text, action_dim)
+            if not parsed_ok:
+                self._record_failure("infer_from_image_async_parse", None)
+            else:
+                self._last_action = action
+                self._available = True
+                self._record_success()
         except Exception as e:
-            self._failure_count += 1
-            self._last_failure = str(e)
-            self._available = False
-            logger.error(
-                "PolicyClient infer_from_image_async FAILED (#%d): %s — emitting ZERO action (safe default), agent uncontrolled",
-                self._failure_count,
-                e,
-            )
+            self._record_failure("infer_from_image_async", e)
             action = [0.0] * max(action_dim, 1)
         latency = time.monotonic() - t0
         self._total_latency += latency
@@ -254,10 +313,10 @@ class PolicyClient:
             pass
         raise TypeError(f"Unsupported image type: {type(image)}. Expected str (base64), bytes, or numpy array.")
 
-    def _parse_action(self, content: str | None, action_dim: int) -> list[float]:
+    def _parse_action(self, content: str | None, action_dim: int) -> tuple[list[float], bool]:
         if not content:
-            logger.warning("Empty model output, using zeros")
-            return [0.0] * max(action_dim, 1)
+            logger.warning("Empty model output, using zeros (parse failure)")
+            return [0.0] * max(action_dim, 1), False
         try:
             fenced = content
             if "```" in fenced:
@@ -281,11 +340,12 @@ class PolicyClient:
                         action.extend([0.0] * (action_dim - len(action)))
                     else:
                         action = action[:action_dim]
-                return action
-        except (ValueError, json.JSONDecodeError):
-            pass
-        logger.warning("Failed to parse action from model output, using zeros")
-        return [0.0] * max(action_dim, 1)
+                return action, True
+        except (ValueError, json.JSONDecodeError) as e:
+            logger.warning(
+                "Failed to parse action from model output (parse failure counted): %s | content=%r", e, content[:120]
+            )
+        return [0.0] * max(action_dim, 1), False
 
     def close(self) -> None:
         self._client.close()
@@ -313,4 +373,6 @@ class PolicyClient:
             "last_failure": self._last_failure,
             "avg_latency": self.avg_latency,
             "last_action": self._last_action[:8],
+            "consecutive_failures": self._consecutive_failures,
+            "circuit_open": self._circuit_open(),
         }
