@@ -12,8 +12,34 @@ from fusion_simulation import __version__
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MLX_URL = os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1")
+_DEFAULT_MLX_URL = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
 _DEFAULT_API_KEY = os.environ.get("FUSION_MLX_API_KEY", "")
+
+
+def _bounded_int(lo: int, hi: int, name: str):
+    def _parse(val: str) -> int:
+        try:
+            n = int(val)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{name} must be an integer, got {val!r}") from None
+        if n < lo or n > hi:
+            raise argparse.ArgumentTypeError(f"{name} must be in [{lo}, {hi}], got {n}")
+        return n
+
+    return _parse
+
+
+def _bounded_float(lo: float, hi: float, name: str):
+    def _parse(val: str) -> float:
+        try:
+            n = float(val)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{name} must be a number, got {val!r}") from None
+        if n < lo or n > hi:
+            raise argparse.ArgumentTypeError(f"{name} must be in [{lo}, {hi}], got {n}")
+        return n
+
+    return _parse
 
 
 def main():
@@ -33,8 +59,8 @@ def main():
     env_init.add_argument("--engine", default="lerobot", choices=["lerobot", "xlerobot"])
     env_init.add_argument("--scene", default="default")
     env_init.add_argument("--headless", action="store_true")
-    env_init.add_argument("--physics-dt", type=float, default=0.01)
-    env_init.add_argument("--render-dt", type=float, default=1.0 / 30.0)
+    env_init.add_argument("--physics-dt", type=_bounded_float(1e-5, 1.0, "physics-dt"), default=0.01)
+    env_init.add_argument("--render-dt", type=_bounded_float(1e-3, 10.0, "render-dt"), default=1.0 / 30.0)
 
     # scene
     scene_parser = subparsers.add_parser("scene", help="Scene management")
@@ -50,9 +76,13 @@ def main():
     agent_spawn = agent_sub.add_parser("spawn", help="Spawn an agent")
     agent_spawn.add_argument("--name", required=True, help="Agent name")
     agent_spawn.add_argument("--entity-id", default="", help="Entity ID to bind")
-    agent_spawn.add_argument("--action-dim", type=int, default=6, help="Action dimension")
+    agent_spawn.add_argument(
+        "--action-dim", type=_bounded_int(0, 1024, "action-dim"), default=6, help="Action dimension"
+    )
     agent_spawn.add_argument("--role", default="robot", choices=["robot", "observer", "controller"])
-    agent_spawn.add_argument("--decimation", type=int, default=1, help="Decimation factor")
+    agent_spawn.add_argument(
+        "--decimation", type=_bounded_int(1, 1000, "decimation"), default=1, help="Decimation factor"
+    )
     agent_sub.add_parser("list", help="List agents")
     agent_destroy = agent_sub.add_parser("destroy", help="Destroy an agent")
     agent_destroy.add_argument("--name", required=True, help="Agent name")
@@ -81,15 +111,20 @@ def main():
     train_parser.add_argument("--engine", default="lerobot", choices=["lerobot", "xlerobot"])
     train_parser.add_argument("--dataset", required=True, help="Dataset name")
     train_parser.add_argument("--model-name", default="robot_policy", help="Output model name")
-    train_parser.add_argument("--epochs", type=int, default=10, help="Training epochs")
-    train_parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    train_parser.add_argument("--epochs", type=_bounded_int(1, 100000, "epochs"), default=10, help="Training epochs")
+    train_parser.add_argument("--lr", type=_bounded_float(0.0, 100.0, "lr"), default=1e-4, help="Learning rate")
     train_parser.add_argument("--use-kernel", action="store_true", help="Use kernel-based training")
+    train_parser.add_argument(
+        "--allow-simulated",
+        action="store_true",
+        help="Allow simulated-loss fallback when fusion-mlx unreachable (output tagged [SIMULATED])",
+    )
 
     # test
     test_parser = subparsers.add_parser("test", help="Test a robot policy")
     test_parser.add_argument("--model", required=True, help="Model name")
     test_parser.add_argument("--engine", default="lerobot", choices=["lerobot", "xlerobot"])
-    test_parser.add_argument("--episodes", type=int, default=10)
+    test_parser.add_argument("--episodes", type=_bounded_int(1, 100000, "episodes"), default=10)
 
     # bench
     bench_parser = subparsers.add_parser("bench", help="Benchmark robot policy")
@@ -110,8 +145,8 @@ def main():
     svc_sub = svc_parser.add_subparsers(dest="action")
     svc_start = svc_sub.add_parser("start", help="Start simulation server")
     svc_start.add_argument("--host", default="0.0.0.0")
-    svc_start.add_argument("--port", type=int, default=11447)
-    svc_start.add_argument("--metrics-port", type=int, default=11456)
+    svc_start.add_argument("--port", type=_bounded_int(1, 65535, "port"), default=11447)
+    svc_start.add_argument("--metrics-port", type=_bounded_int(1, 65535, "metrics-port"), default=11456)
     svc_start.add_argument("--headless", action="store_true")
     svc_start.add_argument("--gateway-url", default="", help="Fusion-Gateway URL")
     svc_start.add_argument("--gui", action="store_true", help="Enable Web Dashboard GUI")
@@ -119,7 +154,9 @@ def main():
     # Affected API: service start gains --mlx-url / --api-key -> KernelConfig + GUIConfig
     # Data schemas: args.mlx_url / args.api_key threaded to kernel_config and gui_config
     # User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
-    svc_start.add_argument("--gui-port", type=int, default=11455, help="Dashboard port (default: 11455)")
+    svc_start.add_argument(
+        "--gui-port", type=_bounded_int(1, 65535, "gui-port"), default=11455, help="Dashboard port (default: 11455)"
+    )
     svc_start.add_argument("--mlx-url", default=_DEFAULT_MLX_URL, help="fusion-mlx base URL (env: FUSION_MLX_URL)")
     svc_start.add_argument("--api-key", default=_DEFAULT_API_KEY, help="fusion-mlx API key (env: FUSION_MLX_API_KEY)")
     svc_sub.add_parser("stop", help="Stop simulation server")
@@ -131,14 +168,14 @@ def main():
     gw_sub = gw_parser.add_subparsers(dest="action")
     gw_register = gw_sub.add_parser("register", help="Register with gateway")
     gw_register.add_argument("--gateway-url", default="http://127.0.0.1:11432")
-    gw_register.add_argument("--service-port", type=int, default=11447)
+    gw_register.add_argument("--service-port", type=_bounded_int(1, 65535, "service-port"), default=11447)
     gw_register.add_argument("--api-key", default="")
 
     # kernel (direct kernel operations)
     kernel_parser = subparsers.add_parser("kernel", help="Direct kernel operations")
     kernel_sub = kernel_parser.add_subparsers(dest="action")
     kernel_run = kernel_sub.add_parser("run", help="Run kernel steps")
-    kernel_run.add_argument("--steps", type=int, default=100)
+    kernel_run.add_argument("--steps", type=_bounded_int(1, 1000000, "steps"), default=100)
     kernel_run.add_argument("--headless", action="store_true")
     kernel_run.add_argument("--scene", default="default")
     kernel_sub.add_parser("status", help="Show kernel status")
@@ -173,9 +210,16 @@ def main():
     }
     handler = dispatch.get(args.command)
     if handler:
-        handler()
+        try:
+            return handler() or 0
+        except SystemExit:
+            raise
+        except Exception as e:
+            logger.error("Command '%s' failed: %s", args.command, e)
+            return 1
     else:
         parser.print_help()
+        return 1
 
 
 def _cmd_version():
@@ -220,17 +264,23 @@ def _cmd_agent_dispatch(args):
         logger.info("Agent spawned: name=%s role=%s action_dim=%d", cfg.name, cfg.role, cfg.action_dim)
         print(f"Agent spawned: name={cfg.name} role={cfg.role} action_dim={cfg.action_dim} decimation={cfg.decimation}")
     elif args.action == "list":
-        print("No active simulation kernel. Start a kernel or service first.")
+        logger.info("agent list: no running kernel/service connected")
+        print(
+            "Not connected to a running kernel or service. Start one with 'fusion-sim service start' or 'fusion-sim kernel run'."
+        )
     elif args.action == "destroy":
-        logger.info("Agent destroy requested: %s", args.name)
-        print(f"Agent '{args.name}' would be destroyed from active kernel.")
+        logger.warning("agent destroy: not connected to running kernel — no-op (name=%s)", args.name)
+        print(f"Not connected to a running kernel. Agent '{args.name}' was NOT destroyed (no service reached).")
     else:
         print("Usage: fusion-simulation agent [spawn|list|destroy]")
 
 
 def _cmd_sensor_dispatch(args):
     if args.action == "list":
-        print("No active simulation kernel. Start a kernel or service first.")
+        logger.info("sensor list: no running kernel/service connected")
+        print(
+            "Not connected to a running kernel or service. Start one with 'fusion-sim service start' or 'fusion-sim kernel run'."
+        )
     elif args.action == "add":
         logger.info("Sensor add: type=%s name=%s res=%dx%d", args.type, args.name, args.width, args.height)
         print(f"Sensor added: type={args.type} name={args.name or 'auto'} resolution={args.width}x{args.height}")
@@ -363,16 +413,13 @@ def _cmd_scene_load(args):
 
 
 async def _cmd_train(args):
+    import sys
+
     from fusion_simulation.dataset.manager import DatasetManager
     from fusion_simulation.train.trainer import BCTrainer
 
     mgr = DatasetManager()
-    dataset_info = mgr.get(args.dataset)
-    if not dataset_info:
-        print(f"Dataset '{args.dataset}' not found. Generating synthetic data...")
-        mgr.collect_samples(args.dataset, num_samples=100)
-
-    trainer = BCTrainer(mlx_url=args.mlx_url)
+    trainer = BCTrainer(mlx_url=args.mlx_url, allow_simulated=args.allow_simulated)
 
     if args.use_kernel:
         from fusion_simulation.agent.config import AgentConfig, AgentRole
@@ -390,10 +437,19 @@ async def _cmd_train(args):
         result = await trainer.train_with_kernel(kernel, "train_agent", epochs=args.epochs)
         kernel.close()
     else:
-        print(f"Training {args.model_name} ({args.epochs} epochs, lr={args.lr})...")
-        result = await trainer.train(dataset=[], epochs=args.epochs, lr=args.lr)
+        dataset_info = mgr.get(args.dataset)
+        if not dataset_info:
+            print(f"Dataset '{args.dataset}' not found.", file=sys.stderr)
+            sys.exit(1)
+        samples = mgr.collect_samples(args.dataset, num_samples=100)
+        if not samples:
+            print(f"Dataset '{args.dataset}' has no samples to train on.", file=sys.stderr)
+            sys.exit(1)
+        print(f"Training {args.model_name} on {len(samples)} samples ({args.epochs} epochs, lr={args.lr})...")
+        result = await trainer.train(dataset=samples, epochs=args.epochs, lr=args.lr)
 
-    print(f"Training completed: loss={result['final_loss']:.4f}, time={result['elapsed_seconds']}s")
+    simulated_tag = " [SIMULATED]" if result.get("simulated") else ""
+    print(f"Training completed{simulated_tag}: loss={result['final_loss']:.4f}, time={result['elapsed_seconds']}s")
     await trainer.close()
 
 
@@ -407,14 +463,16 @@ async def _cmd_test(args):
 
 
 async def _cmd_bench(args):
+    from fusion_simulation.bench import _resolve_report_path
     from fusion_simulation.eval.evaluator import SimulationEvaluator
 
     evaluator = SimulationEvaluator()
     result = await evaluator.evaluate(args.model, episodes=10)
     report = evaluator.generate_report(result, fmt="json" if args.output.endswith(".json") else "markdown")
     if args.output:
-        Path(args.output).write_text(report, encoding="utf-8")
-        print(f"Report saved to {args.output}")
+        safe_path = _resolve_report_path(args.output)
+        Path(safe_path).write_text(report, encoding="utf-8")
+        print(f"Report saved to {safe_path}")
     else:
         print(report)
 

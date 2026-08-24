@@ -64,9 +64,9 @@ class RgbCameraSensor(SensorBase):
             logger.exception("RgbCameraSensor capture failed")
             return {"rgb": None, "depth": None, "segmentation": None, "width": self._width, "height": self._height}
         return {
-            "rgb": self._rgb is not None,
-            "depth": self._depth is not None,
-            "segmentation": self._segmentation is not None,
+            "rgb": self._rgb,
+            "depth": self._depth,
+            "segmentation": self._segmentation,
             "width": self._width,
             "height": self._height,
         }

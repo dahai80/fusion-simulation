@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
+from collections import defaultdict, deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -39,12 +39,16 @@ class Event:
 
 
 class EventBus:
-    def __init__(self) -> None:
+    def __init__(self, max_log_size: int = 1000) -> None:
         self._handlers: dict[EventKind, list[Callable[[Event], None]]] = defaultdict(list)
         self._global_handlers: list[Callable[[Event], None]] = []
-        self._event_log: list[Event] = []
-        self._max_log_size: int = 1000
+        self._event_log: deque[Event] = deque(maxlen=max_log_size)
+        self._max_log_size: int = max_log_size
+        self._raise_on_error: bool = False
         logger.info("EventBus created")
+
+    def set_raise_on_error(self, enabled: bool) -> None:
+        self._raise_on_error = enabled
 
     def subscribe(self, kind: EventKind, handler: Callable[[Event], None]) -> None:
         self._handlers[kind].append(handler)
@@ -56,33 +60,39 @@ class EventBus:
 
     def unsubscribe(self, kind: EventKind, handler: Callable[[Event], None]) -> bool:
         handlers = self._handlers.get(kind, [])
-        if handler in handlers:
+        count = 0
+        while handler in handlers:
             handlers.remove(handler)
-            logger.debug("Handler unsubscribed from %s", kind.name)
-            return True
-        return False
+            count += 1
+        if count:
+            logger.debug("Unsubscribed %d handler(s) from %s", count, kind.name)
+        return count > 0
 
     def emit(self, kind: EventKind, data: dict[str, Any] | None = None, timestamp: float = 0.0) -> None:
         event = Event(kind=kind, timestamp=timestamp, data=data or {})
         self._event_log.append(event)
         if len(self._event_log) > self._max_log_size:
-            self._event_log = self._event_log[-self._max_log_size :]
-        for handler in self._handlers.get(kind, []):
+            self._event_log = deque(self._event_log, maxlen=self._max_log_size)
+        for handler in list(self._handlers.get(kind, [])):
             try:
                 handler(event)
             except Exception as e:
                 logger.error("Event handler error for %s: %s", kind.name, e)
-        for handler in self._global_handlers:
+                if self._raise_on_error:
+                    raise
+        for handler in list(self._global_handlers):
             try:
                 handler(event)
             except Exception as e:
                 logger.error("Global event handler error for %s: %s", kind.name, e)
+                if self._raise_on_error:
+                    raise
 
     def get_log(self, kind: EventKind | None = None, limit: int = 100) -> list[Event]:
         if kind is not None:
             filtered = [e for e in self._event_log if e.kind == kind]
         else:
-            filtered = self._event_log
+            filtered = list(self._event_log)
         return filtered[-limit:]
 
     def clear(self) -> None:

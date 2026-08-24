@@ -2,11 +2,36 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 import time
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def _reports_dir() -> Path:
+    override = os.environ.get("FUSION_SIM_REPORTS_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    return Path.home() / "Library" / "Fusion" / "Simulation" / "reports"
+
+
+def _resolve_report_path(output: str) -> str:
+    reports_dir = _reports_dir()
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    if not output:
+        return str(reports_dir / "bench_report.json")
+    p = Path(output).expanduser()
+    if p.is_absolute():
+        resolved = p.resolve()
+        if resolved != reports_dir.resolve() and reports_dir.resolve() not in resolved.parents:
+            raise ValueError(f"Output path escapes reports dir {reports_dir}: {resolved}")
+        return str(resolved)
+    if ".." in p.parts:
+        raise ValueError(f"Output path traversal rejected: {output}")
+    return str((reports_dir / p).resolve())
 
 
 def bench_physics_step_frequency(physics_dt: float = 0.01, num_steps: int = 10000) -> dict:
@@ -15,10 +40,12 @@ def bench_physics_step_frequency(physics_dt: float = 0.01, num_steps: int = 1000
     cfg = KernelConfig(headless=True, physics_dt=physics_dt)
     kernel = SimulationKernel(cfg)
     kernel.init()
-    t0 = time.perf_counter()
-    kernel.step(num_steps=num_steps)
-    elapsed = time.perf_counter() - t0
-    kernel.close()
+    try:
+        t0 = time.perf_counter()
+        kernel.step(num_steps=num_steps)
+        elapsed = time.perf_counter() - t0
+    finally:
+        kernel.close()
     hz = num_steps / elapsed
     result = {
         "metric": "physics_step_frequency",
@@ -42,13 +69,15 @@ def bench_rgb_sensor_latency(num_captures: int = 100) -> dict:
     kernel.init(sensor_manager=sm)
     sm.add_sensor(SensorConfig(sensor_type=SensorType.RGB_CAMERA, name="bench_cam"))
     latencies = []
-    for i in range(num_captures):
-        sm.set_sim_time(i * 0.01)
-        sm.set_physics_engine(kernel._physics)
-        t0 = time.perf_counter()
-        sm.update()
-        latencies.append((time.perf_counter() - t0) * 1000.0)
-    kernel.close()
+    try:
+        for i in range(num_captures):
+            sm.set_sim_time(i * 0.01)
+            sm.set_physics_engine(kernel._physics)
+            t0 = time.perf_counter()
+            sm.update()
+            latencies.append((time.perf_counter() - t0) * 1000.0)
+    finally:
+        kernel.close()
     avg_ms = sum(latencies) / len(latencies)
     result = {
         "metric": "rgb_sensor_latency",
@@ -69,11 +98,13 @@ def bench_grpc_call_latency(num_calls: int = 1000) -> dict:
     server = SimulationServer()
     server.handle_request("init", {})
     latencies = []
-    for _ in range(num_calls):
-        t0 = time.perf_counter()
-        server.handle_request("status", {})
-        latencies.append((time.perf_counter() - t0) * 1000.0)
-    server.handle_request("close", {})
+    try:
+        for _ in range(num_calls):
+            t0 = time.perf_counter()
+            server.handle_request("status", {})
+            latencies.append((time.perf_counter() - t0) * 1000.0)
+    finally:
+        server.handle_request("close", {})
     avg_ms = sum(latencies) / len(latencies)
     result = {
         "metric": "grpc_call_latency",
@@ -88,6 +119,8 @@ def bench_grpc_call_latency(num_calls: int = 1000) -> dict:
 
 
 def bench_multi_agent_memory(num_agents: int = 5, num_steps: int = 1000) -> dict:
+    import resource
+
     from fusion_simulation.agent.config import AgentConfig, AgentRole
     from fusion_simulation.agent.manager import AgentManager
     from fusion_simulation.core.kernel import KernelConfig, SimulationKernel
@@ -104,11 +137,11 @@ def bench_multi_agent_memory(num_agents: int = 5, num_steps: int = 1000) -> dict
                 decimation=4,
             )
         )
-    kernel.step(num_steps=num_steps)
-    import resource
-
-    rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 / 1024
-    kernel.close()
+    try:
+        kernel.step(num_steps=num_steps)
+        rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 / 1024
+    finally:
+        kernel.close()
     result = {
         "metric": "multi_agent_memory",
         "num_agents": num_agents,
@@ -127,8 +160,10 @@ def bench_cold_start() -> dict:
 
     kernel = SimulationKernel(KernelConfig(headless=True))
     kernel.init()
-    elapsed = time.perf_counter() - t0
-    kernel.close()
+    try:
+        elapsed = time.perf_counter() - t0
+    finally:
+        kernel.close()
     result = {
         "metric": "cold_start",
         "elapsed_s": round(elapsed, 4),
@@ -160,7 +195,7 @@ def main():
         },
     }
 
-    output_path = sys.argv[1] if len(sys.argv) > 1 else "bench_report.json"
+    output_path = _resolve_report_path(sys.argv[1] if len(sys.argv) > 1 else "")
     with open(output_path, "w") as f:
         json.dump(summary, f, indent=2)
 

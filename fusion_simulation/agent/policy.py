@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def _default_endpoint() -> str:
-    base = os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1")
+    base = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
     return base.rstrip("/") + "/chat/completions"
 
 
@@ -42,6 +42,8 @@ class PolicyClient:
         self._total_latency: float = 0.0
         self._last_action: list[float] = []
         self._available: bool = False
+        self._failure_count: int = 0
+        self._last_failure: str = ""
 
     @property
     def endpoint(self) -> str:
@@ -96,10 +98,17 @@ class PolicyClient:
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
             action = self._parse_action(content, action_dim)
             self._last_action = action
-        except Exception:
-            logger.exception("PolicyClient predict failed, using zero action")
-            action = [0.0] * max(action_dim, 1)
+            self._available = True
+        except Exception as e:
+            self._failure_count += 1
+            self._last_failure = str(e)
             self._available = False
+            logger.error(
+                "PolicyClient predict FAILED (#%d): %s — emitting ZERO action (safe default), agent uncontrolled",
+                self._failure_count,
+                e,
+            )
+            action = [0.0] * max(action_dim, 1)
         latency = time.monotonic() - t0
         self._total_latency += latency
         logger.debug("Policy predict: action=%s latency=%.3fs", action[:4], latency)
@@ -149,10 +158,17 @@ class PolicyClient:
             text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
             action = self._parse_action(text, action_dim)
             self._last_action = action
-        except Exception:
-            logger.exception("PolicyClient infer_from_image failed, using zero action")
-            action = [0.0] * max(action_dim, 1)
+            self._available = True
+        except Exception as e:
+            self._failure_count += 1
+            self._last_failure = str(e)
             self._available = False
+            logger.error(
+                "PolicyClient infer_from_image FAILED (#%d): %s — emitting ZERO action (safe default), agent uncontrolled",
+                self._failure_count,
+                e,
+            )
+            action = [0.0] * max(action_dim, 1)
         latency = time.monotonic() - t0
         self._total_latency += latency
         logger.debug("Policy infer_from_image: action=%s latency=%.3fs", action[:4], latency)
@@ -201,10 +217,17 @@ class PolicyClient:
             text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
             action = self._parse_action(text, action_dim)
             self._last_action = action
-        except Exception:
-            logger.exception("PolicyClient infer_from_image_async failed, using zero action")
-            action = [0.0] * max(action_dim, 1)
+            self._available = True
+        except Exception as e:
+            self._failure_count += 1
+            self._last_failure = str(e)
             self._available = False
+            logger.error(
+                "PolicyClient infer_from_image_async FAILED (#%d): %s — emitting ZERO action (safe default), agent uncontrolled",
+                self._failure_count,
+                e,
+            )
+            action = [0.0] * max(action_dim, 1)
         latency = time.monotonic() - t0
         self._total_latency += latency
         logger.debug("Policy infer_from_image_async: action=%s latency=%.3fs", action[:4], latency)
@@ -286,6 +309,8 @@ class PolicyClient:
             "model": self._model_name,
             "available": self._available,
             "request_count": self._request_count,
+            "failure_count": self._failure_count,
+            "last_failure": self._last_failure,
             "avg_latency": self.avg_latency,
             "last_action": self._last_action[:8],
         }

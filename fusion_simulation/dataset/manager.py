@@ -23,20 +23,42 @@ class DatasetManager:
         self._datasets: dict[str, dict] = {}
         if idx_file.exists():
             try:
-                self._datasets = json.loads(idx_file.read_text(encoding="utf-8"))
-            except Exception:
+                raw = json.loads(idx_file.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as e:
+                logger.error("Dataset index.json corrupt, resetting to empty: %s", e)
                 self._datasets = {}
+                return
+            if not isinstance(raw, dict):
+                logger.error("Dataset index.json not a dict, resetting to empty")
+                self._datasets = {}
+                return
+            self._datasets = raw
 
     def _save_index(self) -> None:
         idx_file = self.data_path / "index.json"
         idx_file.write_text(json.dumps(self._datasets, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    @staticmethod
+    def _validate_name(name: str) -> None:
+        if not name:
+            raise ValueError("Dataset name must not be empty")
+        if "/" in name or "\\" in name or ".." in name or name.startswith("."):
+            raise ValueError(f"Invalid dataset name (path traversal blocked): {name!r}")
+
+    def _assert_within_data_root(self, path: Path) -> None:
+        root = self.data_path.resolve()
+        resolved = path.resolve()
+        if resolved != root and root not in resolved.parents:
+            raise ValueError(f"Path escapes data root: {resolved} not under {root}")
+
     def import_dataset(self, name: str, source_path: str, engine: str = "lerobot") -> dict[str, Any]:
         """Import a dataset from local path."""
+        self._validate_name(name)
         src = Path(source_path).expanduser().resolve()
         if not src.exists():
             return {"status": "error", "error": f"Source not found: {src}"}
         dst = self.data_path / name
+        self._assert_within_data_root(dst)
         dst.mkdir(parents=True, exist_ok=True)
         self._datasets[name] = {
             "name": name,
@@ -63,6 +85,7 @@ class DatasetManager:
         import shutil
 
         dst = Path(self._datasets[name]["storage_path"])
+        self._assert_within_data_root(dst)
         if dst.exists():
             shutil.rmtree(dst)
         del self._datasets[name]

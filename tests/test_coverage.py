@@ -88,19 +88,15 @@ class TestCLICoverage:
                     main()
 
     def test_train_no_dataset(self):
+        import pytest as _pytest
+
         from fusion_simulation.cli import main
 
         with patch.object(sys, "argv", ["fusion", "train", "--dataset=unknown", "--model-name=m1"]):
             with patch("fusion_simulation.dataset.manager.DatasetManager.get", return_value=None):
-                with patch(
-                    "fusion_simulation.dataset.manager.DatasetManager.collect_samples",
-                    return_value=[{"observation": [1.0], "action": [0.5]}],
-                ):
-                    with patch(
-                        "fusion_simulation.train.trainer.BCTrainer.train",
-                        AsyncMock(return_value={"status": "completed", "final_loss": 0.5, "elapsed_seconds": 1.0}),
-                    ):
-                        main()
+                with _pytest.raises(SystemExit) as excinfo:
+                    main()
+                assert excinfo.value.code == 1
 
     def test_test(self):
         from fusion_simulation.cli import main

@@ -80,7 +80,7 @@ am.add_agent(
         role=AgentRole.ROBOT,
         action_dim=6,
         decimation=4,
-        policy_endpoint="http://localhost:11434/v1/chat/completions",
+        policy_endpoint="http://localhost:11432/v1/chat/completions",
     )
 )
 ```
@@ -131,7 +131,7 @@ server.handle_request("close", {})
 
 ### OpenAI-Compatible REST API
 
-Exposes `/v1/models`, `/v1/chat/completions` (SSE streaming), `/v1/health` on port 11434 by default. Supports Bearer token auth and dispatches simulation commands from chat messages:
+Exposes `/v1/models`, `/v1/chat/completions` (SSE streaming), `/v1/health` on port 11434 by default. Supports Bearer token auth (constant-time `hmac.compare_digest`; `auth_enabled=True` by default, refuses to start with an empty token). Simulation command dispatch from chat messages is gated by a strict command allowlist (init/step/reset/pause/resume/load_scene/save_snapshot/restore_snapshot/add_sensor/add_agent/get_observations/status/close) — unlisted commands are rejected. Request body capped at 4 MB; oversized Content-Length refused.
 
 ```bash
 # List models
@@ -211,6 +211,8 @@ fusion-sim dataset import --name=mydata --path=/path/to/data
 # Training
 fusion-sim train --dataset=mydata --model-name=policy --epochs=10
 fusion-sim train --dataset=mydata --use-kernel
+# Simulated-loss fallback only with explicit opt-in (output tagged [SIMULATED]):
+fusion-sim train --dataset=mydata --epochs=10 --allow-simulated
 
 # Evaluation
 fusion-sim test --model=policy --engine=lerobot --episodes=5
@@ -249,6 +251,18 @@ fusion-sim service start --gui --gui-port 11455
 | Settings | Kernel/AI/Service config, env check |
 
 API: REST (`/api/*`) + WebSocket (`/ws/events`) + static files.
+
+## Security
+
+Defaults are now safe for local-first use (see audit `audit/fusion-simulation-fix-report-0824.md`):
+
+- **Network bind**: gRPC (11447), Metrics (11456), GUI (11455), OpenAI API (11434) all default to `127.0.0.1`. Bind to `0.0.0.0` only via explicit `--host` and ensure `auth_enabled` + a non-empty token.
+- **Auth**: `auth_enabled=True` by default; empty token with auth enabled refuses to start. Token comparison uses constant-time `hmac.compare_digest`.
+- **WebSocket**: token auth (query `?token=` or `Authorization: Bearer`), Origin check (origin netloc must match Host header), and a command allowlist — unlisted commands return `{"error":"command not allowed","error_code":"forbidden"}`.
+- **SSRF defense**: `add_agent` rejects user-supplied `policy_endpoint`/`api_key`; URL scheme allowlist (http/https only), link-local/loopback blocked; never falls back to the kernel key when the caller is unauthenticated.
+- **Path safety**: dataset `--name` rejects `/`, `..`, leading dots; `import`/`delete` assert the resolved path stays under the data root. URDF parsing requires `defusedxml` (refuses vulnerable stdlib `xml.etree` — XXE defense). Bench `--output` must stay under the reports dir (`~/Library/Fusion/Simulation/reports`, override `FUSION_SIM_REPORTS_DIR`); absolute paths outside it or `..` traversal are rejected.
+- **XSS**: dashboard dynamic text (agent/scene/snapshot names) is HTML-attribute escaped before `innerHTML`.
+- **Training integrity**: empty dataset raises and exits non-zero; simulated-loss fallback is off by default and only with `--allow-simulated`, output tagged `[SIMULATED]`.
 
 ## Testing
 
@@ -292,19 +306,19 @@ ruff format --check .
 
 ## Key Constraints
 
-- All model inference via fusion-mlx HTTP API (`http://localhost:11434/v1`, override with `FUSION_MLX_URL`)
+- All model inference goes through the Fusion-Gateway HTTP API (`http://localhost:11432/v1`, override with `FUSION_MLX_URL`), which proxies the OpenAI-compatible API to the fusion-mlx backend
 - No direct torch/CUDA/MLX imports
 - PyBullet optional — code handles `ImportError` gracefully
 - Python ≥3.12
 - Default model: `Qwen3.5-4B-bf16` via fusion-mlx (override with `FUSION_MLX_MODEL`)
-- All fusion-mlx requests carry `X-Fusion-Route: mlx` + `Authorization: Bearer ${FUSION_MLX_API_KEY}`
-- **11434 direct-connect is a deliberate decision, not an oversight** — fusion-simulation is **excluded from Phase C fusion-core unification** (which routes all projects through the 11432 gateway). Rationale: the latency-sensitive robot control loop uses a synchronous `httpx.Client` with multimodal `image_url`, whereas `fusion-core`'s `http_client` is async + non-multimodal and cannot fully replace it. Do not migrate the 11434 default to 11432 without first evaluating gateway-hop latency and extending fusion-core for multimodal. See [#10](https://github.com/dahai80/fusion-simulation/issues/10).
+- All inference requests carry `X-Fusion-Route: mlx` + `Authorization: Bearer ${FUSION_MLX_API_KEY}`
+- **Inference routes through the Fusion-Gateway (11432), not direct fusion-mlx (11434)** — per directive "建议全部使用gateway访问fusion-mlx" (issue #10 选项2 落地). The gateway forwards multimodal `image_url` content verbatim (live-verified), so issue #10's original premise (gateway cannot do multimodal) is obsolete. The sync `httpx.Client` is retained — only the base URL changed 11434→11432, no fusion-core migration. Note: the simulation's *own* OpenAI-compatible REST API (`openai_api.py`, `--openai-api-port`) is a separate service and still defaults to 11434. See [#10](https://github.com/dahai80/fusion-simulation/issues/10).
 
 ## Environment Variables
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `FUSION_MLX_URL` | fusion-mlx base URL (read by `KernelConfig`, `AgentConfig`, `GUIConfig`, CLI `--mlx-url`, `BCTrainer`) | `http://localhost:11434/v1` |
+| `FUSION_MLX_URL` | Fusion-Gateway base URL proxying fusion-mlx (read by `KernelConfig`, `AgentConfig`, `GUIConfig`, CLI `--mlx-url`, `BCTrainer`) | `http://localhost:11432/v1` |
 | `FUSION_MLX_API_KEY` | fusion-mlx Bearer auth key (read by `KernelConfig`, `GUIConfig`, CLI `--api-key`, `BCTrainer`) | empty — emits a WARNING on kernel start |
 | `FUSION_MLX_MODEL` | default model name (read by `AgentConfig`, `PolicyClient`, `BCTrainer`, GUI) | `Qwen3.5-4B-bf16` |
 | `FUSION_MLX_ROUTE` | `X-Fusion-Route` header value for fusion-mlx routing | `mlx` |

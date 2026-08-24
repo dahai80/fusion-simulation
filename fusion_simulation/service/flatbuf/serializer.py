@@ -260,13 +260,26 @@ def deserialize_sensor_data(buf: bytes) -> dict[str, Any]:
         if rgb:
             w, h, ch = rgb.Width(), rgb.Height(), rgb.Channels()
             raw = bytes(rgb.DataAsNumpy()) if hasattr(rgb, "DataAsNumpy") else bytes(rgb.Data())
+            expected = w * h * ch
+            if w <= 0 or h <= 0 or ch <= 0:
+                raise ValueError(f"Invalid rgb dims: w={w} h={h} ch={ch}")
+            if expected != len(raw):
+                raise ValueError(f"rgb buffer size mismatch: w*h*ch={expected} != len(raw)={len(raw)}")
             data["rgb"] = np.frombuffer(raw, dtype=np.uint8).reshape(h, w, ch)
         depth = result.Depth()
         if depth:
             w, h = depth.Width(), depth.Height()
             raw = bytes(depth.DataAsNumpy()) if hasattr(depth, "DataAsNumpy") else bytes(depth.Data())
+            expected = w * h
+            if w <= 0 or h <= 0:
+                raise ValueError(f"Invalid depth dims: w={w} h={h}")
+            if expected != len(raw) // 4:
+                raise ValueError(f"depth buffer size mismatch: w*h={expected} != len(raw)/4={len(raw) // 4}")
             data["depth"] = np.frombuffer(raw, dtype=np.float32).reshape(h, w)
         return data
+    except ValueError as e:
+        logger.error("FlatBuffer sensor deserialization validation error: %s", e)
+        raise
     except Exception as e:
         logger.error("FlatBuffer sensor deserialization failed: %s", e)
         return _fallback_deserialize(buf)

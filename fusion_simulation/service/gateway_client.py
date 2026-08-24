@@ -66,6 +66,8 @@ class GatewayClient:
         self._stop_event = threading.Event()
         self._start_time = 0.0
         self._health_provider = None
+        self._heartbeat_failures = 0
+        self._reregister_threshold = 3
 
     @property
     def is_registered(self) -> bool:
@@ -135,6 +137,11 @@ class GatewayClient:
 
     def deregister(self) -> bool:
         if not self._registered:
+            return True
+        if not self._config.enabled:
+            self._registered = False
+            self._stop_heartbeat()
+            logger.debug("Gateway disabled, marking deregistered without contacting gateway")
             return True
         self._stop_heartbeat()
         url = f"{self._config.gateway_url}/v1/services/deregister"
@@ -206,7 +213,21 @@ class GatewayClient:
     def _heartbeat_loop(self) -> None:
         while not self._stop_event.is_set():
             try:
-                self.send_heartbeat()
+                ok = self.send_heartbeat()
+                if ok:
+                    self._heartbeat_failures = 0
+                else:
+                    self._heartbeat_failures += 1
+                    if self._heartbeat_failures >= self._reregister_threshold:
+                        logger.warning(
+                            "Heartbeat failed %d times, attempting re-registration with gateway",
+                            self._heartbeat_failures,
+                        )
+                        self._heartbeat_failures = 0
+                        try:
+                            self.register()
+                        except Exception as e:
+                            logger.warning("Re-registration attempt failed: %s", e)
             except Exception as e:
                 logger.debug("Heartbeat loop error: %s", e)
             self._stop_event.wait(timeout=self._config.heartbeat_interval)

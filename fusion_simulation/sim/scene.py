@@ -135,6 +135,14 @@ class SceneResourceManager:
     def list_builtin_scenes(self) -> list[dict[str, str]]:
         return [{"name": k, "description": v.get("description", "")} for k, v in self.BUILTIN_SCENES.items()]
 
+    def get_body_entity_map(self) -> dict[int, EntityId]:
+        result: dict[int, EntityId] = {}
+        for name, body_id in self._loaded_bodies.items():
+            eid = self._loaded_entities.get(name)
+            if eid is not None:
+                result[body_id] = eid
+        return result
+
     def save_scene(self, scene_config: SceneConfig, path: str) -> None:
         p = Path(path).expanduser().resolve()
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -144,8 +152,9 @@ class SceneResourceManager:
 
     def _load_asset(self, asset: SceneAsset) -> int:
         if asset.asset_type == "urdf":
+            safe_path = self._validate_asset_path(asset.path)
             body_id = self._physics.load_urdf(
-                asset.path,
+                safe_path,
                 position=asset.position,
                 orientation=asset.orientation,
                 fixed_base=asset.fixed_base,
@@ -154,7 +163,7 @@ class SceneResourceManager:
             transform = Transform(entity_id=eid, position=asset.position, orientation=asset.orientation)
             self._ecs.add_component(eid, transform)
             if asset.fixed_base:
-                self._ecs.add_component(eid, Articulation(entity_id=eid, urdf_path=asset.path))
+                self._ecs.add_component(eid, Articulation(entity_id=eid, urdf_path=safe_path))
             else:
                 self._ecs.add_component(eid, RigidBody(entity_id=eid))
             key = asset.name or f"asset_{body_id}"
@@ -163,6 +172,22 @@ class SceneResourceManager:
             return body_id
         else:
             raise ValueError(f"Unsupported asset type: {asset.asset_type}")
+
+    def _validate_asset_path(self, path: str) -> str:
+        if not path:
+            raise ValueError("Asset path is empty")
+        if "\x00" in path:
+            raise ValueError("Asset path contains null byte")
+        p = Path(path)
+        if p.is_absolute():
+            resolved = p.expanduser().resolve()
+            if ".." in p.parts:
+                raise ValueError(f"Asset path traversal rejected: {path}")
+            logger.debug("Absolute asset path allowed: %s", resolved)
+            return str(resolved)
+        if ".." in p.parts:
+            raise ValueError(f"Relative asset path traversal rejected: {path}")
+        return path
 
     def _dict_to_scene_config(self, data: dict[str, Any]) -> SceneConfig:
         assets = []

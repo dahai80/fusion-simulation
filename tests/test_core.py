@@ -97,15 +97,28 @@ class TestBCTrainer:
 
     @pytest.mark.asyncio
     async def test_train_step_fallback(self):
-        trainer = BCTrainer(mlx_url="http://localhost:19999")
+        trainer = BCTrainer(mlx_url="http://localhost:19999", allow_simulated=True)
         result = await trainer.train_step([[1.0]], [[0.0]], lr=1e-4)
         assert "loss" in result  # Falls back to simulated loss
+        assert result.get("simulated") is True
+
+    @pytest.mark.asyncio
+    async def test_train_step_fallback_disabled_raises(self):
+        trainer = BCTrainer(mlx_url="http://localhost:19999", allow_simulated=False)
+        with pytest.raises(Exception):
+            await trainer.train_step([[1.0]], [[0.0]], lr=1e-4)
 
     @pytest.mark.asyncio
     async def test_train_step_empty(self):
         trainer = BCTrainer()
         result = await trainer.train_step([], [])
         assert result["loss"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_train_empty_dataset_raises(self):
+        trainer = BCTrainer()
+        with pytest.raises(ValueError):
+            await trainer.train(dataset=[], epochs=2)
 
     @pytest.mark.asyncio
     async def test_train(self):
