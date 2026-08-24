@@ -66,7 +66,8 @@ class DepthCameraSensor(SensorBase):
             logger.exception("DepthCameraSensor capture failed")
             return {"depth": None, "width": self._width, "height": self._height, "near": self._near, "far": self._far}
         return {
-            "depth": self._depth is not None,
+            "depth": self._depth,
+            "point_cloud": self._point_cloud,
             "width": self._width,
             "height": self._height,
             "near": self._near,

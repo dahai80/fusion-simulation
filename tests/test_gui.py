@@ -33,10 +33,10 @@ class TestGUIConfig:
         from fusion_simulation.gui import GUIConfig
 
         cfg = GUIConfig()
-        assert cfg.host == "0.0.0.0"
+        assert cfg.host == "127.0.0.1"
         assert cfg.port == 11455
         assert cfg.metrics_url == "http://127.0.0.1:11456"
-        assert cfg.grpc_host == "0.0.0.0"
+        assert cfg.grpc_host == "127.0.0.1"
         assert cfg.grpc_port == 11447
 
 

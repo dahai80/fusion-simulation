@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -22,7 +23,7 @@ class TestCLIFinal:
         args.model = "test"
         args.engine = "lerobot"
         args.episodes = 3
-        args.mlx_url = "http://localhost:11434/v1"
+        args.mlx_url = "http://localhost:11432/v1"
         with patch(
             "fusion_simulation.eval.evaluator.SimulationEvaluator.evaluate",
             AsyncMock(return_value=EvalResult(task_success_rate=0.8)),
@@ -37,20 +38,21 @@ class TestCLIFinal:
         from fusion_simulation.cli import _cmd_bench
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            out = str(Path(tmpdir) / "report.md")
-            args = MagicMock()
-            args.model = "test"
-            args.output = out
-            args.mlx_url = "http://localhost:11434/v1"
-            with patch(
-                "fusion_simulation.eval.evaluator.SimulationEvaluator.evaluate",
-                AsyncMock(return_value=EvalResult(task_success_rate=0.9)),
-            ):
+            with patch.dict(os.environ, {"FUSION_SIM_REPORTS_DIR": tmpdir}):
+                out = str(Path(tmpdir) / "report.md")
+                args = MagicMock()
+                args.model = "test"
+                args.output = out
+                args.mlx_url = "http://localhost:11432/v1"
                 with patch(
-                    "fusion_simulation.eval.evaluator.SimulationEvaluator.generate_report", return_value="# Report"
+                    "fusion_simulation.eval.evaluator.SimulationEvaluator.evaluate",
+                    AsyncMock(return_value=EvalResult(task_success_rate=0.9)),
                 ):
-                    await _cmd_bench(args)
-            assert Path(out).exists()
+                    with patch(
+                        "fusion_simulation.eval.evaluator.SimulationEvaluator.generate_report", return_value="# Report"
+                    ):
+                        await _cmd_bench(args)
+                assert Path(out).exists()
 
     @pytest.mark.asyncio
     async def test_cmd_bench_no_output(self):
@@ -59,7 +61,7 @@ class TestCLIFinal:
         args = MagicMock()
         args.model = "test"
         args.output = ""
-        args.mlx_url = "http://localhost:11434/v1"
+        args.mlx_url = "http://localhost:11432/v1"
         with patch(
             "fusion_simulation.eval.evaluator.SimulationEvaluator.evaluate",
             AsyncMock(return_value=EvalResult(task_success_rate=0.9)),

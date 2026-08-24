@@ -10,14 +10,14 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class MetricsConfig:
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 11456
 
 
@@ -26,6 +26,7 @@ class MetricsCollector:
         self._counters: dict[str, float] = {}
         self._gauges: dict[str, float] = {}
         self._histograms: dict[str, list[float]] = {}
+        self._histogram_dropped: dict[str, int] = {}
         self._start_time = time.time()
         self._lock = threading.Lock()
 
@@ -46,7 +47,9 @@ class MetricsCollector:
                 self._histograms[key] = []
             self._histograms[key].append(value)
             if len(self._histograms[key]) > 1000:
+                dropped = len(self._histograms[key]) - 500
                 self._histograms[key] = self._histograms[key][-500:]
+                self._histogram_dropped[key] = self._histogram_dropped.get(key, 0) + dropped
 
     def get_counter(self, name: str, labels: dict[str, str] | None = None) -> float:
         key = self._make_key(name, labels)
@@ -81,6 +84,9 @@ class MetricsCollector:
                 lines.append(f"# TYPE {name} summary")
                 lines.append(f"{name}_count{labels} {count}")
                 lines.append(f"{name}_sum{labels} {total:.6g}")
+                dropped = self._histogram_dropped.get(key, 0)
+                if dropped:
+                    lines.append(f"{name}_dropped{labels} {dropped}")
                 for q in [0.5, 0.9, 0.95, 0.99]:
                     idx = min(int(count * q), count - 1)
                     label_inner = labels[1:-1] if labels else ""
@@ -92,8 +98,12 @@ class MetricsCollector:
     def _make_key(name: str, labels: dict[str, str] | None = None) -> str:
         if not labels:
             return name
-        label_str = ",".join(f'{k}="{v}"' for k, v in sorted(labels.items()))
+        label_str = ",".join(f'{k}="{MetricsCollector._escape_label_value(v)}"' for k, v in sorted(labels.items()))
         return f"{name}{{{label_str}}}"
+
+    @staticmethod
+    def _escape_label_value(v: str) -> str:
+        return str(v).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
     @staticmethod
     def _parse_key(key: str) -> tuple[str, str]:
@@ -108,6 +118,7 @@ class MetricsCollector:
             self._counters.clear()
             self._gauges.clear()
             self._histograms.clear()
+            self._histogram_dropped.clear()
             self._start_time = time.time()
 
 
@@ -184,7 +195,7 @@ class MetricsServer:
     def __init__(self, config: MetricsConfig | None = None, collector: MetricsCollector | None = None):
         self._config = config or MetricsConfig()
         self._collector = collector or MetricsCollector()
-        self._server: HTTPServer | None = None
+        self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._health_provider = None
 
@@ -205,7 +216,7 @@ class MetricsServer:
                 self._health_provider = health_provider
                 super().__init__(*args, **kwargs)
 
-        self._server = HTTPServer(
+        self._server = ThreadingHTTPServer(
             (self._config.host, self._config.port),
             Handler,
         )

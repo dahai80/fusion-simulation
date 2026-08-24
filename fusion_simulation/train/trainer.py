@@ -11,7 +11,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-_MLX_DEFAULT = os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1")
+_MLX_DEFAULT = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
 _DEFAULT_MODEL = os.environ.get("FUSION_MLX_MODEL", "Qwen3.5-4B-bf16")
 
 
@@ -21,14 +21,17 @@ class BCTrainer:
         mlx_url: str = _MLX_DEFAULT,
         model: str = _DEFAULT_MODEL,
         api_key: str = "",
+        allow_simulated: bool = False,
     ) -> None:
         self.mlx_url = mlx_url.rstrip("/")
         self.model = model
+        self.allow_simulated = allow_simulated
         self._headers = {"X-Fusion-Route": os.environ.get("FUSION_MLX_ROUTE", "mlx")}
         key = api_key or os.environ.get("FUSION_MLX_API_KEY", "")
         if key:
             self._headers["Authorization"] = f"Bearer {key}"
         self._history: dict[str, list[float]] = {"loss": [], "accuracy": []}
+        self._simulated_steps = 0
         self._client = httpx.AsyncClient(timeout=120.0)
 
     async def train_step(
@@ -62,8 +65,16 @@ class BCTrainer:
             content = resp.json()["choices"][0]["message"]["content"]
             result = json.loads(content)
         except Exception as e:
-            logger.warning("Train step failed, using simulated loss: %s", e)
-            result = {"loss": float(np.random.random() * 0.5), "accuracy": float(np.random.random() * 0.3)}
+            if not self.allow_simulated:
+                logger.error("Train step FAILED and simulated fallback disabled: %s", e)
+                raise
+            self._simulated_steps += 1
+            logger.warning("Train step failed, using simulated loss [SIMULATED] #%d: %s", self._simulated_steps, e)
+            result = {
+                "loss": float(np.random.random() * 0.5),
+                "accuracy": float(np.random.random() * 0.3),
+                "simulated": True,
+            }
         self._history["loss"].append(result.get("loss", 0.0))
         self._history["accuracy"].append(result.get("accuracy", 0.0))
         return result
@@ -71,6 +82,12 @@ class BCTrainer:
     async def train(
         self, dataset: list[dict[str, Any]], epochs: int = 10, batch_size: int = 32, lr: float = 1e-4
     ) -> dict[str, Any]:
+        if not dataset:
+            logger.error("train() called with empty dataset — refusing to run a no-op training")
+            raise ValueError("Cannot train on an empty dataset (no-op training blocked)")
+        for item in dataset:
+            if "observation" not in item or "action" not in item:
+                raise ValueError(f"Dataset item missing 'observation' or 'action' key: {item}")
         total_samples = len(dataset)
         start_time = time.time()
         for epoch in range(epochs):
@@ -84,12 +101,15 @@ class BCTrainer:
                 epoch_loss += result.get("loss", 0.0)
                 num_batches += 1
             avg_loss = epoch_loss / max(num_batches, 1)
-            logger.info("Epoch %d/%d: loss=%.4f", epoch + 1, epochs, avg_loss)
+            tag = " [SIMULATED]" if self._simulated_steps else ""
+            logger.info("Epoch %d/%d: loss=%.4f%s", epoch + 1, epochs, avg_loss, tag)
         elapsed = time.time() - start_time
         return {
             "status": "completed",
             "epochs": epochs,
             "final_loss": self._history["loss"][-1] if self._history["loss"] else 0.0,
+            "simulated_steps": self._simulated_steps,
+            "simulated": self._simulated_steps > 0,
             "elapsed_seconds": round(elapsed, 2),
             "history": self._history,
         }

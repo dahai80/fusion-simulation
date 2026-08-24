@@ -75,7 +75,8 @@ class SemanticCameraSensor(SensorBase):
             logger.exception("SemanticCameraSensor capture failed")
             return {"segmentation": None, "width": self._width, "height": self._height, "num_labels": 0}
         return {
-            "segmentation": self._segmentation is not None,
+            "segmentation": self._segmentation,
+            "instance_segmentation": self._instance_seg,
             "width": self._width,
             "height": self._height,
             "num_labels": len(self._label_map),

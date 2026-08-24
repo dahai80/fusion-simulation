@@ -44,6 +44,7 @@ class SimulationServer:
         self._server: Any = None
         self._running: bool = False
         self._lock = threading.Lock()
+        self._start_time: float = 0.0
         self._event_subscribers: list[queue.Queue] = []
         self._gateway_client: GatewayClient | None = None
         self._metrics_server: MetricsServer | None = None
@@ -70,19 +71,31 @@ class SimulationServer:
         return self._kernel
 
     def _on_event(self, event: Any) -> None:
+        with self._lock:
+            subscribers = list(self._event_subscribers)
         dead = []
-        for i, q in enumerate(self._event_subscribers):
+        dropped = 0
+        for i, q in enumerate(subscribers):
             try:
                 q.put_nowait(event)
+            except queue.Full:
+                dropped += 1
+                logger.warning("Event subscriber queue full, dropping event %s", getattr(event, "kind", "?"))
             except Exception:
                 dead.append(i)
-        for i in reversed(dead):
-            self._event_subscribers.pop(i)
+        if dead:
+            with self._lock:
+                for i in reversed(dead):
+                    if i < len(self._event_subscribers):
+                        self._event_subscribers.pop(i)
+        if dropped:
+            logger.warning("_on_event: %d events dropped across slow subscribers", dropped)
 
     def start(self) -> None:
         if self._running:
             logger.warning("SimulationServer already running")
             return
+        self._start_time = time.time()
         try:
             import importlib.util as _ilu
 
@@ -156,8 +169,8 @@ class SimulationServer:
         try:
             return handler(params)
         except Exception as e:
-            logger.exception("RPC error: %s", method)
-            return {"error": str(e)}
+            logger.exception("RPC error: %s: %s", method, e)
+            return {"error": f"RPC '{method}' failed", "error_code": "internal_error"}
 
     def _rpc_init(self, params: dict[str, Any]) -> dict[str, Any]:
         k = self._ensure_kernel()
@@ -166,6 +179,10 @@ class SimulationServer:
     def _rpc_step(self, params: dict[str, Any]) -> dict[str, Any]:
         k = self._ensure_kernel()
         num_steps = params.get("num_steps", 1)
+        if not isinstance(num_steps, int) or num_steps < 1:
+            return {"error": "num_steps must be a positive integer", "error_code": "invalid_params"}
+        if num_steps > 100000:
+            return {"error": "num_steps exceeds maximum (100000)", "error_code": "invalid_params"}
         sim_time = k.step(num_steps=num_steps)
         fr = k.frame_result
         if self._metrics_collector is not None:
@@ -237,19 +254,18 @@ class SimulationServer:
             return {"error": "No agent manager"}
         from fusion_simulation.agent.config import AgentConfig, AgentRole
 
-        # Callers: gui.api_add_agent -> handle_request("add_agent") -> _rpc_add_agent
-        # Affected API: add_agent params gain optional api_key; falls back to kernel_config.mlx_api_key
-        # Data schemas: AgentConfig(api_key=...) -> PolicyClient Authorization header
-        # User instruction: "和~/fusion/fuison-simulation项目集成起来...最后要完成端到端测试,确保系统可用"
+        if params.get("policy_endpoint") or params.get("api_key"):
+            logger.warning(
+                "add_agent: caller-supplied policy_endpoint/api_key rejected (SSRF/key-leak guard); using kernel config"
+            )
         cfg = AgentConfig(
             name=params.get("name", ""),
             role=AgentRole(params.get("role", "robot")),
             entity_id=params.get("entity_id", ""),
             action_dim=params.get("action_dim", 0),
-            policy_endpoint=params.get("policy_endpoint", "")
-            or (self._kernel_config.mlx_url.rstrip("/") + "/chat/completions"),
+            policy_endpoint=self._kernel_config.mlx_url.rstrip("/") + "/chat/completions",
             model_name=params.get("model_name", "") or AgentConfig().model_name,
-            api_key=params.get("api_key", "") or self._kernel_config.mlx_api_key,
+            api_key=self._kernel_config.mlx_api_key,
         )
         self._agent_manager.add_agent(cfg)
         return {"status": "added", "name": cfg.name}
@@ -271,14 +287,16 @@ class SimulationServer:
 
     def subscribe_events(self) -> queue.Queue:
         q: queue.Queue = queue.Queue(maxsize=1000)
-        self._event_subscribers.append(q)
+        with self._lock:
+            self._event_subscribers.append(q)
         return q
 
     def unsubscribe_events(self, q: queue.Queue) -> None:
-        try:
-            self._event_subscribers.remove(q)
-        except ValueError:
-            pass
+        with self._lock:
+            try:
+                self._event_subscribers.remove(q)
+            except ValueError:
+                pass
 
     @property
     def metrics_collector(self) -> MetricsCollector | None:
@@ -304,6 +322,8 @@ class SimulationServer:
                 sensor_count = len(self._kernel.sensor_manager._sensors)
             if self._kernel.agent_manager:
                 agent_count = len(self._kernel.agent_manager._agents)
+        if self._start_time > 0 and self._running:
+            uptime = time.time() - self._start_time
         return HealthPayload(
             status=status,
             kernel_state=kernel_state,
@@ -444,7 +464,8 @@ try:
         def StreamSensorData(self, request, context):
             sensor_names = list(request.sensor_names) if request.sensor_names else []
             interval = request.interval_sec if request.interval_sec > 0 else 0.1
-            max_frames = max(0, request.max_frames)
+            max_frames = request.max_frames if request.max_frames > 0 else 10000
+            max_frames = min(max_frames, 100000)
             frame_count = 0
             try:
                 while context.is_active():
@@ -483,7 +504,15 @@ try:
                     try:
                         params = json.loads(req.params_json)
                     except json.JSONDecodeError:
-                        params = {}
+                        k = self._server.kernel
+                        yield simulation_pb2.SimStateResponse(
+                            sim_time=k.clock.sim_time if k else 0.0,
+                            frame_count=k.clock.frame_count if k else 0,
+                            state_json=json.dumps(
+                                {"error": "Invalid JSON in params_json", "error_code": "bad_params"}, default=str
+                            ),
+                        )
+                        continue
                 if command == "step":
                     resp = self._server.handle_request("step", params)
                 elif command == "status":

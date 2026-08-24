@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import threading
@@ -11,37 +12,15 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_SIM_COMMAND_MAP = {
-    "init": "init",
-    "step": "step",
-    "reset": "reset",
-    "close": "close",
-    "status": "status",
-    "load_scene": "load_scene",
-    "save_snapshot": "save_snapshot",
-    "restore_snapshot": "restore_snapshot",
-    "add_sensor": "add_sensor",
-    "add_agent": "add_agent",
-    "get_observations": "get_observations",
-    "pause": "pause",
-    "resume": "resume",
-    "create_simulation": "create_simulation",
-    "start_simulation": "start_simulation",
-    "pause_simulation": "pause_simulation",
-    "reset_simulation": "reset_simulation",
-    "destroy_simulation": "destroy_simulation",
-    "spawn_agent": "spawn_agent",
-    "destroy_agent": "destroy_agent",
-    "apply_action": "apply_action",
-    "list_scenes": "list_scenes",
-}
+_MAX_BODY_BYTES = 4 * 1024 * 1024
+_SOCKET_TIMEOUT = 30.0
 
 
 @dataclass
 class OpenAI_API_Config:
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 11434
-    auth_enabled: bool = False
+    auth_enabled: bool = True
     auth_token: str = ""
 
 
@@ -49,6 +28,7 @@ class _OpenAI_API_Handler(BaseHTTPRequestHandler):
     _server_ref: Any = None
     _auth_token: str = ""
     _auth_enabled: bool = False
+    protocol_version = "HTTP/1.1"
 
     def do_GET(self) -> None:
         if self._check_auth() is False:
@@ -72,7 +52,8 @@ class _OpenAI_API_Handler(BaseHTTPRequestHandler):
         if not self._auth_enabled:
             return True
         auth_header = self.headers.get("Authorization", "")
-        if auth_header == f"Bearer {self._auth_token}":
+        expected = f"Bearer {self._auth_token}"
+        if auth_header.startswith("Bearer ") and hmac.compare_digest(auth_header, expected):
             return True
         self._send_json(
             {"error": {"message": "Invalid or missing API key", "type": "authentication_error"}},
@@ -123,6 +104,13 @@ class _OpenAI_API_Handler(BaseHTTPRequestHandler):
                 status=400,
             )
             return
+        if content_length > _MAX_BODY_BYTES:
+            logger.warning("OpenAI API rejected oversized body: %d > %d", content_length, _MAX_BODY_BYTES)
+            self._send_json(
+                {"error": {"message": "Request body too large", "type": "invalid_request_error"}},
+                status=413,
+            )
+            return
         body = self.rfile.read(content_length)
         try:
             data = json.loads(body)
@@ -145,8 +133,7 @@ class _OpenAI_API_Handler(BaseHTTPRequestHandler):
         if isinstance(last_message, list):
             text_parts = [p.get("text", "") for p in last_message if p.get("type") == "text"]
             last_message = " ".join(text_parts)
-        sim_result = self._dispatch_sim_command(last_message)
-        response_text = json.dumps(sim_result, default=str, ensure_ascii=False)
+        response_text = self._generate_response(last_message, model)
         request_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
         created = int(time.time())
         if stream:
@@ -176,26 +163,18 @@ class _OpenAI_API_Handler(BaseHTTPRequestHandler):
                 }
             )
 
-    def _dispatch_sim_command(self, text: str) -> dict[str, Any]:
-        if self._server_ref is None:
-            return {"error": "server not initialized"}
-        try:
-            parsed = json.loads(text)
-        except (json.JSONDecodeError, TypeError):
-            return {"result": text}
-        if not isinstance(parsed, dict):
-            return {"result": text}
-        command = parsed.pop("command", "")
-        method = _SIM_COMMAND_MAP.get(command)
-        if method is None:
-            return {"error": f"Unknown simulation command: {command}"}
-        try:
-            result = self._server_ref.handle_request(method, parsed)
-            logger.info("OpenAI API dispatched command=%s", command)
-            return result
-        except Exception as e:
-            logger.exception("OpenAI API dispatch error: %s", command)
-            return {"error": str(e)}
+    def _generate_response(self, text: str, model: str) -> str:
+        if self._server_ref is not None:
+            try:
+                health = self._server_ref.get_health()
+                if isinstance(health, dict):
+                    return json.dumps(
+                        {"status": health.get("status", "unknown"), "model": model, "echo": text[:512]},
+                        ensure_ascii=False,
+                    )
+            except Exception:
+                logger.debug("OpenAI API health read failed", exc_info=True)
+        return json.dumps({"model": model, "echo": text[:512]}, ensure_ascii=False)
 
     def _handle_health(self) -> None:
         if self._server_ref is not None:
@@ -284,6 +263,10 @@ class OpenAI_API_Server:
         sim_server = self._sim_server
         auth_token = self._config.auth_token
         auth_enabled = self._config.auth_enabled
+        if auth_enabled and not auth_token:
+            raise RuntimeError(
+                "OpenAI_API_Server: auth_enabled=True but auth_token is empty; refusing to start unauthenticated"
+            )
 
         class Handler(_OpenAI_API_Handler):
             def __init__(self, *args, **kwargs):
@@ -296,6 +279,7 @@ class OpenAI_API_Server:
             (self._config.host, self._config.port),
             Handler,
         )
+        self._server.timeout = _SOCKET_TIMEOUT
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         logger.info(

@@ -30,6 +30,8 @@ class SimClock:
         self._wall_start: float = 0.0
         self._wall_elapsed: float = 0.0
         self._paused: bool = False
+        self._pause_start: float = 0.0
+        self._accumulated_pause: float = 0.0
         logger.info(
             "SimClock created: physics_dt=%.4f render_dt=%.4f max_step=%d",
             physics_dt,
@@ -69,7 +71,8 @@ class SimClock:
             return self.snapshot()
         self._sim_time += self._physics_dt
         self._frame_count += 1
-        self._wall_elapsed = time.monotonic() - self._wall_start if self._wall_start else 0.0
+        if self._wall_start:
+            self._wall_elapsed = time.monotonic() - self._wall_start - self._accumulated_pause
         return self.snapshot()
 
     def tick_render(self) -> SimTime:
@@ -89,19 +92,29 @@ class SimClock:
         self._wall_start = time.monotonic()
         self._wall_elapsed = 0.0
         self._paused = False
+        self._pause_start = 0.0
+        self._accumulated_pause = 0.0
         logger.info("SimClock reset")
 
     def start(self) -> None:
         self._wall_start = time.monotonic()
         self._paused = False
+        self._pause_start = 0.0
+        self._accumulated_pause = 0.0
         logger.info("SimClock started")
 
     def pause(self) -> None:
-        self._paused = True
+        if not self._paused:
+            self._paused = True
+            self._pause_start = time.monotonic()
         logger.info("SimClock paused at sim_time=%.4f", self._sim_time)
 
     def resume(self) -> None:
-        self._paused = False
+        if self._paused:
+            self._paused = False
+            if self._pause_start:
+                self._accumulated_pause += time.monotonic() - self._pause_start
+                self._pause_start = 0.0
         logger.info("SimClock resumed at sim_time=%.4f", self._sim_time)
 
     def real_time_factor(self) -> float:

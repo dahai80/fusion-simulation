@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -22,6 +23,46 @@ logger = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
+_WS_COMMAND_ALLOWLIST = {
+    "status",
+    "step",
+    "reset",
+    "pause",
+    "resume",
+    "load_scene",
+    "save_snapshot",
+    "restore_snapshot",
+    "add_sensor",
+    "add_agent",
+    "get_observations",
+}
+
+
+def _check_ws_auth(cfg: GUIConfig, websocket: WebSocket) -> bool:
+    if not cfg.auth_token:
+        return True
+    token = websocket.query_params.get("token", "")
+    auth_header = websocket.headers.get("authorization", "")
+    bearer = auth_header[7:] if auth_header.lower().startswith("bearer ") else ""
+    return hmac.compare_digest(token, cfg.auth_token) or hmac.compare_digest(bearer, cfg.auth_token)
+
+
+def _check_origin(websocket: WebSocket) -> bool:
+    origin = websocket.headers.get("origin", "")
+    if not origin:
+        return True
+    host = websocket.headers.get("host", "")
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(origin)
+        origin_host = parsed.netloc
+    except Exception:
+        return False
+    if not origin_host or not host:
+        return True
+    return origin_host == host
+
 
 def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
     cfg = config or GUIConfig()
@@ -30,6 +71,8 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
     app.state.sim_server = server
     app.state.gui_config = cfg
     app.state.ws_clients: list[WebSocket] = []
+    app.state.ws_clients_lock = threading.Lock()
+    app.state.uvicorn_loop: asyncio.AbstractEventLoop | None = None
 
     # ---- REST API ----
 
@@ -221,8 +264,20 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
 
     @app.websocket("/ws/events")
     async def ws_events(websocket: WebSocket):
+        if not _check_origin(websocket):
+            await websocket.close(code=1008)
+            return
+        if not _check_ws_auth(cfg, websocket):
+            logger.warning("WS connection rejected: auth failed")
+            await websocket.close(code=1008)
+            return
+        if not cfg.auth_token:
+            logger.warning(
+                "WS accepting connection with no auth_token configured (dev mode) — set GUIConfig.auth_token for production"
+            )
         await websocket.accept()
-        app.state.ws_clients.append(websocket)
+        with app.state.ws_clients_lock:
+            app.state.ws_clients.append(websocket)
         try:
             while True:
                 data = await websocket.receive_text()
@@ -230,6 +285,9 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
                     msg = json.loads(data)
                     cmd = msg.get("command", "")
                     params = msg.get("params", {})
+                    if cmd not in _WS_COMMAND_ALLOWLIST:
+                        await websocket.send_json({"error": f"command not allowed: {cmd}", "error_code": "forbidden"})
+                        continue
                     srv = app.state.sim_server
                     if srv and cmd:
                         result = srv.handle_request(cmd, params)
@@ -239,8 +297,9 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
         except WebSocketDisconnect:
             pass
         finally:
-            if websocket in app.state.ws_clients:
-                app.state.ws_clients.remove(websocket)
+            with app.state.ws_clients_lock:
+                if websocket in app.state.ws_clients:
+                    app.state.ws_clients.remove(websocket)
 
     # ---- Static files (must be last mount) ----
 
@@ -252,13 +311,18 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
 
 async def _broadcast(app: FastAPI, data: dict) -> None:
     dead = []
-    for i, ws in enumerate(app.state.ws_clients):
+    with app.state.ws_clients_lock:
+        clients = list(app.state.ws_clients)
+    for ws in clients:
         try:
             await ws.send_json(data)
         except Exception:
-            dead.append(i)
-    for i in reversed(dead):
-        app.state.ws_clients.pop(i)
+            dead.append(ws)
+    if dead:
+        with app.state.ws_clients_lock:
+            for ws in dead:
+                if ws in app.state.ws_clients:
+                    app.state.ws_clients.remove(ws)
 
 
 def run_dashboard(server=None, config: GUIConfig | None = None) -> None:
@@ -274,28 +338,39 @@ def run_dashboard(server=None, config: GUIConfig | None = None) -> None:
         while server.is_running:
             try:
                 event = event_q.get(timeout=1.0)
-                loop = asyncio.new_event_loop()
-                try:
+                loop = app.state.uvicorn_loop
+                if loop is None:
+                    continue
+                with app.state.ws_clients_lock:
                     clients = list(app.state.ws_clients)
-                    for ws in clients:
-                        try:
-                            data = {
-                                "type": "event",
-                                "kind": event.kind.value if hasattr(event.kind, "value") else str(event.kind),
-                                "sim_time": event.data.get("sim_time", 0.0),
-                                "data": event.data,
-                            }
-                            loop.run_until_complete(ws.send_json(data))
-                        except Exception:
-                            pass
-                finally:
-                    loop.close()
-            except Exception:
-                pass
+                data = {
+                    "type": "event",
+                    "kind": event.kind.value if hasattr(event.kind, "value") else str(event.kind),
+                    "sim_time": event.data.get("sim_time", 0.0),
+                    "data": event.data,
+                }
+                for ws in clients:
+                    try:
+                        fut = asyncio.run_coroutine_threadsafe(ws.send_json(data), loop)
+                        fut.result(timeout=5.0)
+                    except Exception as e:
+                        logger.debug("WS event push failed (client gone?): %s", e)
+                        with app.state.ws_clients_lock:
+                            if ws in app.state.ws_clients:
+                                app.state.ws_clients.remove(ws)
+            except Exception as e:
+                logger.debug("Event broadcaster loop error: %s", e)
         server.unsubscribe_events(event_q)
 
     t = threading.Thread(target=_event_broadcaster, daemon=True)
     t.start()
 
     logger.info("Starting dashboard on %s:%d", cfg.host, cfg.port)
-    uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info")
+    config_uvicorn = uvicorn.Config(app, host=cfg.host, port=cfg.port, log_level="info")
+    uvi_server = uvicorn.Server(config_uvicorn)
+
+    async def _capture_loop():
+        app.state.uvicorn_loop = asyncio.get_running_loop()
+        await uvi_server.serve()
+
+    asyncio.run(_capture_loop())

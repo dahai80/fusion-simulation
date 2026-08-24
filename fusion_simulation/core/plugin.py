@@ -2,12 +2,25 @@ from __future__ import annotations
 
 import importlib
 import logging
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+class _SandboxImportBlocker:
+    def __init__(self, sandbox: PluginSandbox) -> None:
+        self._sandbox = sandbox
+
+    def find_spec(self, fullname: str, path: Any = None, target: Any = None):
+        if not self._sandbox._enforcing:
+            return None
+        if not self._sandbox.check_import(fullname):
+            raise ImportError(f"Sandbox blocked import of '{fullname}'")
+        return None
 
 
 @dataclass
@@ -44,17 +57,33 @@ class PluginSandbox:
         self._max_memory_mb = max_memory_mb
         self._timeout_sec = timeout_sec
         self._violations: list[str] = []
+        self._enforcing: bool = False
 
     def check_import(self, module_name: str) -> bool:
         root = module_name.split(".")[0]
         if root in self._allowed_modules:
             return True
         for allowed in self._allowed_modules:
-            if module_name.startswith(allowed):
+            if module_name == allowed or module_name.startswith(allowed + "."):
                 return True
         self._violations.append(f"Blocked import: {module_name}")
         logger.warning("Sandbox blocked import: %s", module_name)
         return False
+
+    def __enter__(self) -> PluginSandbox:
+        self._enforcing = True
+        blocker = _SandboxImportBlocker(self)
+        if blocker not in sys.meta_path:
+            sys.meta_path.insert(0, blocker)
+        self._active_blocker = blocker
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self._enforcing = False
+        blocker = getattr(self, "_active_blocker", None)
+        if blocker is not None and blocker in sys.meta_path:
+            sys.meta_path.remove(blocker)
+        self._active_blocker = None
 
     def check_memory(self, current_mb: float) -> bool:
         if current_mb > self._max_memory_mb:
@@ -165,11 +194,11 @@ class PluginManager:
 
     def load_plugin_from_module(self, module_path: str, name: str = "") -> bool:
         try:
-            root_module = module_path.split(".")[0]
             if not self._sandbox.check_import(module_path):
                 logger.error("Sandbox blocked plugin load: %s", module_path)
                 return False
-            module = importlib.import_module(module_path)
+            with self._sandbox:
+                module = importlib.import_module(module_path)
             plugin_class = getattr(module, "Plugin", None)
             if plugin_class is None:
                 logger.error("Module '%s' has no Plugin class", module_path)
@@ -282,23 +311,47 @@ class PluginManager:
     def load_discovered_plugins(self, search_dirs: list[str] | None = None) -> int:
         discovered = self.discover_plugins(search_dirs)
         loaded = 0
+        cwd = Path.cwd()
         for p in discovered:
             if not p.get("loadable", False):
                 continue
             try:
                 module_path = Path(p["path"])
-                if module_path.is_dir():
-                    parts = list(module_path.relative_to(Path.cwd()).parts)
-                    mod_path = ".".join(parts)
-                else:
-                    parts = list(module_path.relative_to(Path.cwd()).with_suffix("").parts)
-                    mod_path = ".".join(parts)
+                mod_path = self._path_to_module_name(module_path, cwd)
+                if mod_path is None:
+                    logger.warning(
+                        "Plugin %s at %s is not importable (outside cwd and sys.path); skipped",
+                        p["name"],
+                        p["path"],
+                    )
+                    continue
                 if self.load_plugin_from_module(mod_path, p["name"]):
                     loaded += 1
             except Exception as e:
                 logger.warning("Failed to load discovered plugin %s: %s", p["name"], e)
         logger.info("Loaded %d/%d discovered plugins", loaded, len(discovered))
         return loaded
+
+    def _path_to_module_name(self, module_path: Path, cwd: Path) -> str | None:
+        try:
+            if module_path.is_dir():
+                parts = list(module_path.relative_to(cwd).parts)
+            else:
+                parts = list(module_path.relative_to(cwd).with_suffix("").parts)
+            return ".".join(parts)
+        except ValueError:
+            for entry in sys.path:
+                try:
+                    rel = Path(module_path).relative_to(entry)
+                    if module_path.is_dir():
+                        parts = list(rel.parts)
+                    else:
+                        parts = list(rel.with_suffix("").parts)
+                    if parts and parts[0] != "..":
+                        return ".".join(parts)
+                except ValueError:
+                    continue
+            return None
 
     @property
     def sandbox(self) -> PluginSandbox:

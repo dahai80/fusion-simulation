@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def _default_policy_endpoint() -> str:
-    base = os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1")
+    base = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
     return base.rstrip("/") + "/chat/completions"
 
 
@@ -42,3 +42,9 @@ class AgentConfig:
     action_lower: list[float] | None = None
     action_upper: list[float] | None = None
     params: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.decimation < 1:
+            raise ValueError(f"AgentConfig.decimation must be >= 1, got {self.decimation}")
+        if self.action_dim < 0:
+            raise ValueError(f"AgentConfig.action_dim must be >= 0, got {self.action_dim}")

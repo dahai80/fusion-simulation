@@ -7,7 +7,7 @@ from typing import Any
 try:
     from defusedxml import ElementTree
 except ImportError:
-    from xml.etree import ElementTree
+    ElementTree = None
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,11 @@ logger = logging.getLogger(__name__)
 class UrdfLoader:
     @staticmethod
     def parse(urdf_path: str) -> dict[str, Any]:
+        if ElementTree is None:
+            logger.error(
+                "defusedxml not installed — refusing to parse URDF with vulnerable stdlib xml.etree (XXE risk)"
+            )
+            raise ImportError("defusedxml is required for safe URDF parsing (XXE defense)")
         p = Path(urdf_path).expanduser().resolve()
         if not p.exists():
             raise FileNotFoundError(f"URDF file not found: {p}")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
@@ -101,78 +102,97 @@ class EntityManager:
     def __init__(self) -> None:
         self._entities: dict[EntityId, dict[type[Component], Component]] = {}
         self._next_id: int = 0
+        self._lock = threading.RLock()
         logger.info("EntityManager created")
 
     def create_entity(self, entity_id: EntityId | None = None) -> EntityId:
-        if entity_id is None:
-            entity_id = EntityId()
-        self._entities[entity_id] = {}
-        logger.debug("Entity created: %s", entity_id)
-        return entity_id
+        with self._lock:
+            if entity_id is None:
+                entity_id = EntityId()
+            self._entities[entity_id] = {}
+            logger.debug("Entity created: %s", entity_id)
+            return entity_id
 
     def destroy_entity(self, entity_id: EntityId) -> bool:
-        if entity_id in self._entities:
-            del self._entities[entity_id]
-            logger.debug("Entity destroyed: %s", entity_id)
-            return True
-        return False
+        with self._lock:
+            if entity_id in self._entities:
+                del self._entities[entity_id]
+                logger.debug("Entity destroyed: %s", entity_id)
+                return True
+            return False
 
     def add_component(self, entity_id: EntityId, component: Component) -> None:
-        if entity_id not in self._entities:
-            raise KeyError(f"Entity {entity_id} does not exist")
-        component.entity_id = entity_id
-        comp_type = type(component)
-        self._entities[entity_id][comp_type] = component
-        logger.debug("Component %s added to entity %s", comp_type.__name__, entity_id)
+        with self._lock:
+            if entity_id not in self._entities:
+                raise KeyError(f"Entity {entity_id} does not exist")
+            component.entity_id = entity_id
+            comp_type = type(component)
+            self._entities[entity_id][comp_type] = component
+            logger.debug("Component %s added to entity %s", comp_type.__name__, entity_id)
 
     def remove_component(self, entity_id: EntityId, comp_type: type[T]) -> bool:
-        if entity_id not in self._entities:
+        with self._lock:
+            if entity_id not in self._entities:
+                return False
+            if comp_type in self._entities[entity_id]:
+                del self._entities[entity_id][comp_type]
+                logger.debug("Component %s removed from entity %s", comp_type.__name__, entity_id)
+                return True
             return False
-        if comp_type in self._entities[entity_id]:
-            del self._entities[entity_id][comp_type]
-            logger.debug("Component %s removed from entity %s", comp_type.__name__, entity_id)
-            return True
-        return False
 
     def get_component(self, entity_id: EntityId, comp_type: type[T]) -> T | None:
-        if entity_id not in self._entities:
-            return None
-        return self._entities[entity_id].get(comp_type)
+        with self._lock:
+            if entity_id not in self._entities:
+                return None
+            return self._entities[entity_id].get(comp_type)
 
     def get_components(self, entity_id: EntityId) -> dict[type[Component], Component]:
-        return dict(self._entities.get(entity_id, {}))
+        with self._lock:
+            return dict(self._entities.get(entity_id, {}))
 
     def has_component(self, entity_id: EntityId, comp_type: type[Component]) -> bool:
-        return entity_id in self._entities and comp_type in self._entities[entity_id]
+        with self._lock:
+            return entity_id in self._entities and comp_type in self._entities[entity_id]
 
     def query(self, *comp_types: type[Component]) -> list[tuple[EntityId, tuple[Component, ...]]]:
-        results = []
-        for eid, comps in self._entities.items():
-            if all(ct in comps for ct in comp_types):
-                results.append((eid, tuple(comps[ct] for ct in comp_types)))
-        return results
+        with self._lock:
+            results = []
+            for eid, comps in self._entities.items():
+                if all(ct in comps for ct in comp_types):
+                    results.append((eid, tuple(comps[ct] for ct in comp_types)))
+            return results
 
     def list_entities(self) -> list[EntityId]:
-        return list(self._entities.keys())
+        with self._lock:
+            return list(self._entities.keys())
 
     def entity_count(self) -> int:
-        return len(self._entities)
+        with self._lock:
+            return len(self._entities)
 
     def clear(self) -> None:
-        self._entities.clear()
-        logger.info("EntityManager cleared")
+        with self._lock:
+            self._entities.clear()
+            logger.info("EntityManager cleared")
 
     def serialize_entity(self, entity_id: EntityId) -> dict[str, Any] | None:
-        if entity_id not in self._entities:
-            return None
-        comps = self._entities[entity_id]
-        return {
-            "entity_id": str(entity_id),
-            "components": {ct.__name__: _serialize_component(c) for ct, c in comps.items()},
-        }
+        with self._lock:
+            if entity_id not in self._entities:
+                return None
+            comps = self._entities[entity_id]
+            return {
+                "entity_id": str(entity_id),
+                "components": {ct.__name__: _serialize_component(c) for ct, c in comps.items()},
+            }
 
     def serialize_all(self) -> list[dict[str, Any]]:
-        return [self.serialize_entity(eid) for eid in self._entities if self.serialize_entity(eid) is not None]
+        with self._lock:
+            results = []
+            for eid in list(self._entities.keys()):
+                serialized = self.serialize_entity(eid)
+                if serialized is not None:
+                    results.append(serialized)
+            return results
 
 
 def _serialize_component(comp: Component) -> dict[str, Any]:

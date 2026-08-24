@@ -1289,7 +1289,8 @@ class TestRgbCameraSensorCoverage:
             "segmentation": np.zeros((24, 32)),
         }
         data = cam.update(sim_time=0.1, physics_engine=mock_physics)
-        assert data["rgb"] is True
+        assert isinstance(data["rgb"], np.ndarray)
+        assert data["rgb"].shape == (24, 32, 3)
 
     def test_capture_physics_exception(self):
         cfg = SensorConfig(sensor_type=SensorType.RGB_CAMERA, name="cam")

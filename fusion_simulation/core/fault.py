@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -24,10 +25,10 @@ class FaultRecord:
 
 
 class FaultIsolationManager:
-    def __init__(self) -> None:
+    def __init__(self, max_fault_log: int = 1000) -> None:
         self._fault_counts: dict[str, int] = {}
         self._isolated: set[str] = set()
-        self._fault_log: list[FaultRecord] = []
+        self._fault_log: deque[FaultRecord] = deque(maxlen=max_fault_log)
         self._max_faults_per_component: int = 5
         self._recovery_fns: dict[str, Any] = {}
         logger.info("FaultIsolationManager created")
@@ -51,20 +52,25 @@ class FaultIsolationManager:
         self._fault_log.append(record)
         self._fault_counts[key] = self._fault_counts.get(key, 0) + 1
         logger.warning("Fault reported: %s level=%s msg=%s", key, level.value, message)
-        if level == FaultLevel.CRITICAL:
-            self._isolate(component_type, component_id)
-            return False
-        if self._fault_counts[key] >= self._max_faults_per_component:
-            self._isolate(component_type, component_id)
-            return False
+        recovered = False
         if key in self._recovery_fns:
             try:
                 self._recovery_fns[key]()
                 record.recovered = True
+                recovered = True
                 logger.info("Fault recovered: %s", key)
             except Exception as e:
                 logger.error("Recovery failed for %s: %s", key, e)
+        if level == FaultLevel.CRITICAL and not recovered:
+            self._isolate(component_type, component_id)
+            return False
+        if self._fault_counts[key] >= self._max_faults_per_component and not recovered:
+            self._isolate(component_type, component_id)
+            return False
         return True
+
+    def should_skip(self, component_type: str, component_id: str) -> bool:
+        return self.is_isolated(component_type, component_id)
 
     def _isolate(self, component_type: str, component_id: str) -> None:
         key = f"{component_type}:{component_id}"
@@ -84,7 +90,7 @@ class FaultIsolationManager:
         return True
 
     def get_fault_log(self, limit: int = 100) -> list[dict[str, Any]]:
-        records = self._fault_log[-limit:]
+        records = list(self._fault_log)[-limit:]
         return [
             {
                 "component_type": r.component_type,
