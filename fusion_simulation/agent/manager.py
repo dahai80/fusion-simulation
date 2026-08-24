@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -196,6 +197,40 @@ class AgentManager:
         for name in self._agents:
             actions[name] = self.observe_act_loop(name)
         return actions
+
+    async def step_all_async(self) -> dict[str, list[float]]:
+        """Parallel non-blocking inference over all agents via asyncio.gather.
+
+        Unlike step_all (serial, sync httpx), this fans out each agent's vision
+        inference through infer_from_image_async so one slow/cold MLX request
+        does not block the others. Callers running inside an event loop should
+        prefer this; the sync kernel step path still uses step_all.
+        """
+
+        async def _one(name: str, agent: AgentHandle) -> tuple[str, list[float]]:
+            if agent.done:
+                return name, agent.last_action
+            if agent.step_count % agent.config.decimation != 0:
+                return name, agent.last_action
+            image = self._get_agent_image(name)
+            if image is not None:
+                action = await agent.policy.infer_from_image_async(
+                    image=image,
+                    prompt=f"Step {agent.step_count}: Given this camera view, output {agent.config.action_dim} action values as JSON array.",
+                    action_dim=agent.config.action_dim,
+                )
+            else:
+                obs = self.collect_observations(name)
+                action = await asyncio.to_thread(agent.policy.predict, obs, agent.config.action_dim)
+            action = self._scale_action(action, agent.config)
+            agent.record_step(action)
+            return name, action
+
+        results = await asyncio.gather(
+            *(_one(name, agent) for name, agent in self._agents.items()),
+            return_exceptions=False,
+        )
+        return {name: action for name, action in results}
 
     def reset_agent(self, name: str) -> bool:
         agent = self._agents.get(name)

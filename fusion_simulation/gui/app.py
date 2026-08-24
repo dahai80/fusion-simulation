@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
+_WS_IDLE_TIMEOUT_SEC = 300.0
+
 _WS_COMMAND_ALLOWLIST = {
     "status",
     "step",
@@ -78,92 +80,69 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
 
     @app.get("/api/health")
     async def api_health():
-        srv = app.state.sim_server
-        if srv is None:
+        result = await _dispatch(app, "status", {})
+        if result.get("error_code") == "no_server":
             return JSONResponse({"status": "no_server", "initialized": False})
-        return JSONResponse(srv.handle_request("status", {}))
+        return JSONResponse(result)
 
     @app.get("/api/status")
     async def api_status():
-        srv = app.state.sim_server
-        if srv is None:
+        result = await _dispatch(app, "status", {})
+        if result.get("error_code") == "no_server":
             return JSONResponse({"initialized": False})
-        return JSONResponse(srv.handle_request("status", {}))
+        return JSONResponse(result)
 
     @app.post("/api/init")
     async def api_init():
-        srv = app.state.sim_server
-        if srv is None:
+        result = await _dispatch(app, "init", {})
+        if result.get("error_code") == "no_server":
             return JSONResponse({"error": "no_server"}, status_code=503)
-        return JSONResponse(srv.handle_request("init", {}))
+        return JSONResponse(result)
 
     @app.post("/api/step")
     async def api_step(num_steps: int = 1):
-        srv = app.state.sim_server
-        if srv is None:
-            return JSONResponse({"error": "no_server"}, status_code=503)
-        result = srv.handle_request("step", {"num_steps": num_steps})
+        result = await _dispatch(app, "step", {"num_steps": num_steps})
         await _broadcast(app, result)
         return JSONResponse(result)
 
     @app.post("/api/reset")
     async def api_reset():
-        srv = app.state.sim_server
-        if srv is None:
-            return JSONResponse({"error": "no_server"}, status_code=503)
-        result = srv.handle_request("reset", {})
+        result = await _dispatch(app, "reset", {})
         await _broadcast(app, result)
         return JSONResponse(result)
 
     @app.post("/api/pause")
     async def api_pause():
-        srv = app.state.sim_server
-        if srv is None:
-            return JSONResponse({"error": "no_server"}, status_code=503)
-        result = srv.handle_request("pause", {})
+        result = await _dispatch(app, "pause", {})
         await _broadcast(app, result)
         return JSONResponse(result)
 
     @app.post("/api/resume")
     async def api_resume():
-        srv = app.state.sim_server
-        if srv is None:
-            return JSONResponse({"error": "no_server"}, status_code=503)
-        result = srv.handle_request("resume", {})
+        result = await _dispatch(app, "resume", {})
         await _broadcast(app, result)
         return JSONResponse(result)
 
     @app.post("/api/load_scene")
     async def api_load_scene(name: str = "default"):
-        srv = app.state.sim_server
-        if srv is None:
-            return JSONResponse({"error": "no_server"}, status_code=503)
-        result = srv.handle_request("load_scene", {"name": name})
+        result = await _dispatch(app, "load_scene", {"name": name})
         await _broadcast(app, result)
         return JSONResponse(result)
 
     @app.post("/api/save_snapshot")
     async def api_save_snapshot(name: str = ""):
-        srv = app.state.sim_server
-        if srv is None:
-            return JSONResponse({"error": "no_server"}, status_code=503)
-        result = srv.handle_request("save_snapshot", {"name": name})
+        result = await _dispatch(app, "save_snapshot", {"name": name})
         return JSONResponse(result)
 
     @app.post("/api/restore_snapshot")
     async def api_restore_snapshot(snapshot_id: str = ""):
-        srv = app.state.sim_server
-        if srv is None:
-            return JSONResponse({"error": "no_server"}, status_code=503)
-        result = srv.handle_request("restore_snapshot", {"snapshot_id": snapshot_id})
+        result = await _dispatch(app, "restore_snapshot", {"snapshot_id": snapshot_id})
         return JSONResponse(result)
 
     @app.post("/api/add_sensor")
     async def api_add_sensor(type: str = "rgb_camera", name: str = "", entity_id: str = ""):
-        srv = app.state.sim_server
-        if srv is None:
-            return JSONResponse({"error": "no_server"}, status_code=503)
-        result = srv.handle_request(
+        result = await _dispatch(
+            app,
             "add_sensor",
             {
                 "type": type,
@@ -182,10 +161,8 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
         entity_id: str = "",
         model_name: str = os.environ.get("FUSION_MLX_MODEL", "Qwen3.5-4B-bf16"),
     ):
-        srv = app.state.sim_server
-        if srv is None:
-            return JSONResponse({"error": "no_server"}, status_code=503)
-        result = srv.handle_request(
+        result = await _dispatch(
+            app,
             "add_agent",
             {
                 "name": name,
@@ -200,10 +177,10 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
 
     @app.get("/api/observations")
     async def api_observations():
-        srv = app.state.sim_server
-        if srv is None:
+        result = await _dispatch(app, "get_observations", {})
+        if result.get("error_code") == "no_server":
             return JSONResponse({"error": "no_server"}, status_code=503)
-        return JSONResponse(srv.handle_request("get_observations", {}))
+        return JSONResponse(result)
 
     @app.get("/api/metrics")
     async def api_metrics():
@@ -280,7 +257,12 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
             app.state.ws_clients.append(websocket)
         try:
             while True:
-                data = await websocket.receive_text()
+                try:
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=_WS_IDLE_TIMEOUT_SEC)
+                except TimeoutError:
+                    logger.info("WS idle timeout (%.0fs), closing: %s", _WS_IDLE_TIMEOUT_SEC, websocket.client)
+                    await websocket.close(code=1000)
+                    break
                 try:
                     msg = json.loads(data)
                     cmd = msg.get("command", "")
@@ -288,9 +270,8 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
                     if cmd not in _WS_COMMAND_ALLOWLIST:
                         await websocket.send_json({"error": f"command not allowed: {cmd}", "error_code": "forbidden"})
                         continue
-                    srv = app.state.sim_server
-                    if srv and cmd:
-                        result = srv.handle_request(cmd, params)
+                    if cmd:
+                        result = await _dispatch(app, cmd, params)
                         await websocket.send_json(result)
                 except json.JSONDecodeError:
                     await websocket.send_json({"error": "invalid json"})
@@ -307,6 +288,14 @@ def create_app(server=None, config: GUIConfig | None = None) -> FastAPI:
         app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")
 
     return app
+
+
+async def _dispatch(app: FastAPI, command: str, params: dict) -> dict:
+    srv = app.state.sim_server
+    if srv is None:
+        return {"error": "no_server", "error_code": "no_server"}
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, srv.handle_request, command, params)
 
 
 async def _broadcast(app: FastAPI, data: dict) -> None:

@@ -322,6 +322,11 @@ class MuJoCoEngine(PhysicsEngine):
             logger.error("Failed to get contact points for body %d: %s", body_id, e)
             return []
 
+    def get_all_body_ids(self) -> list[int]:
+        if not self._initialized:
+            return []
+        return list(self._body_map.keys())
+
     @property
     def is_initialized(self) -> bool:
         return self._initialized

@@ -82,10 +82,16 @@ class TestCLICoverage:
         with patch.object(sys, "argv", ["fusion", "train", "--dataset=test", "--model-name=m1", "--epochs=2"]):
             with patch(
                 "fusion_simulation.train.trainer.BCTrainer.train",
-                AsyncMock(return_value={"status": "completed", "final_loss": 0.5, "elapsed_seconds": 1.0}),
+                AsyncMock(
+                    return_value={"status": "completed", "final_loss": 0.5, "elapsed_seconds": 1.0, "deployable": True}
+                ),
             ):
                 with patch("fusion_simulation.dataset.manager.DatasetManager.get", return_value={"name": "test"}):
-                    main()
+                    with patch(
+                        "fusion_simulation.dataset.manager.DatasetManager.load_samples",
+                        return_value=[{"observation": [1.0], "action": [0.5]} for _ in range(5)],
+                    ):
+                        main()
 
     def test_train_no_dataset(self):
         import pytest as _pytest

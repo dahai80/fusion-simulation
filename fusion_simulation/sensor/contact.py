@@ -78,7 +78,7 @@ class ContactSensor(SensorBase):
                 if str(bid) == entity_id:
                     return bid
         except Exception:
-            pass
+            logger.exception("ContactSensor _resolve_body_id failed for entity_id=%s", entity_id)
         return None
 
     def get_observation(self) -> dict[str, Any]:

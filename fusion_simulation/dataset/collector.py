@@ -4,20 +4,25 @@ import json
 import logging
 import os
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from fusion_simulation.core.rng import numpy_to_native
+
 logger = logging.getLogger(__name__)
+
+_DEFAULT_MAX_FRAMES = 100000
 
 
 @dataclass
 class RecordingConfig:
     sensors: list[str] = field(default_factory=list)
     frequency_hz: float = 10.0
-    max_frames: int = 0
+    max_frames: int = _DEFAULT_MAX_FRAMES
     save_images: bool = True
     image_format: str = "png"
     output_dir: str = ""
@@ -76,7 +81,13 @@ class DataCollector:
         if self._active is not None:
             raise RuntimeError(f"Recording already active: {self._active}")
         config = config or RecordingConfig()
-        rec_id = f"rec_{int(time.time() * 1000)}"
+        if config.max_frames <= 0:
+            config.max_frames = _DEFAULT_MAX_FRAMES
+            logger.warning(
+                "Recording max_frames unbounded, capping to %d to prevent OOM",
+                _DEFAULT_MAX_FRAMES,
+            )
+        rec_id = f"rec_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
         self._recordings[rec_id] = []
         self._configs[rec_id] = config
         self._active = rec_id
@@ -288,7 +299,7 @@ class DataCollector:
         coco["categories"] = [{"id": cid, "name": cname} for cname, cid in cat_map.items()]
         out_path = os.path.join(output_dir, "coco_annotations.json")
         with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(coco, f, indent=2, default=str)
+            json.dump(numpy_to_native(coco), f, indent=2, ensure_ascii=False)
         logger.info("COCO dataset exported: %s (%d images, %d annotations)", out_path, len(frames), ann_id - 1)
         return out_path
 
@@ -338,32 +349,36 @@ class DataCollector:
             )
         out_path = os.path.join(output_dir, "recording.json")
         with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, default=str)
+            json.dump(numpy_to_native(data), f, indent=2, ensure_ascii=False)
         logger.info("Raw dataset exported: %s (%d frames)", out_path, len(frames))
         return out_path
 
-    def domain_randomize(self, config: DRConfig) -> dict[str, Any]:
-        rng = np.random.default_rng()
+    def domain_randomize(self, config: DRConfig, seed: int | None = None) -> dict[str, Any]:
+        if seed is None:
+            logger.warning("domain_randomize called with no seed — variations NOT reproducible")
+            rng = np.random.default_rng()
+        else:
+            rng = np.random.default_rng(int(seed))
         variations: list[dict[str, Any]] = []
         for i in range(config.num_variations):
             variation: dict[str, Any] = {"variation_id": i}
             if config.randomize_lighting:
                 intensity = float(rng.uniform(*config.lighting_range))
                 variation["lighting_intensity"] = intensity
-                self._apply_lighting_randomization(intensity)
+                self._apply_lighting_randomization(intensity, rng)
             if config.randomize_positions:
                 offset = [float(rng.uniform(*config.position_range)) for _ in range(3)]
                 variation["position_offset"] = offset
                 self._apply_position_randomization(offset)
             if config.randomize_textures:
-                seed = int(rng.integers(0, 2**31))
-                variation["texture_seed"] = seed
-                self._apply_texture_randomization(seed)
+                seed_val = int(rng.integers(0, 2**31))
+                variation["texture_seed"] = seed_val
+                self._apply_texture_randomization(seed_val)
             variations.append(variation)
-        logger.info("Domain randomization: %d variations generated", config.num_variations)
+        logger.info("Domain randomization: %d variations generated (seed=%s)", config.num_variations, seed)
         return {"num_variations": config.num_variations, "variations": variations}
 
-    def _apply_lighting_randomization(self, intensity: float) -> None:
+    def _apply_lighting_randomization(self, intensity: float, rng: np.random.Generator | None = None) -> None:
         if self._physics_engine is None:
             logger.debug("Lighting randomization skipped: no physics engine")
             return
@@ -374,8 +389,8 @@ class DataCollector:
                     enable=intensity > 0.5,
                 )
             if hasattr(self._physics_engine, "set_light_direction"):
-                rng = np.random.default_rng()
-                angle = float(rng.uniform(0, 2 * np.pi))
+                gen = rng if rng is not None else np.random.default_rng()
+                angle = float(gen.uniform(0, 2 * np.pi))
                 self._physics_engine.set_light_direction(
                     [np.cos(angle) * 0.5, np.sin(angle) * 0.5, -1.0],
                 )

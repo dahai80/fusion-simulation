@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+
 import numpy as np
+import pybullet_data
 import pytest
 
 from fusion_simulation.agent.config import AgentConfig, AgentRole
@@ -454,9 +457,151 @@ class TestSimulationKernel:
         assert k.clock.frame_count == 10
         ok = k.restore_snapshot("test_snap")
         assert ok
+        assert k.clock.frame_count == 5
         ok = k.restore_snapshot("nonexistent")
         assert not ok
         k.close()
+
+    def test_snapshot_restores_physics_state(self):
+        k = SimulationKernel(KernelConfig(headless=True))
+        k.init()
+        box = k._physics.load_urdf(
+            os.path.join(pybullet_data.getDataPath(), "block.urdf"),
+            position=[0.0, 0.0, 1.0],
+        )
+        eid = k.ecs.create_entity()
+        k.ecs.add_component(eid, Transform(position=[0.0, 0.0, 1.0]))
+        k._body_entity_map[box] = eid
+        k.step(20)
+        pos_before = k._physics.get_body_state(box).position
+        snap_id = k.save_snapshot("phys_snap")
+        assert k._snapshot_physics["phys_snap"] is not None
+        k.step(20)
+        assert k.clock.frame_count == 40
+        ok = k.restore_snapshot("phys_snap")
+        assert ok
+        pos_after = k._physics.get_body_state(box).position
+        assert k.clock.frame_count == 20
+        assert abs(pos_after[2] - pos_before[2]) < 1e-6
+        k.close()
+
+    def test_snapshot_lru_eviction(self):
+        k = SimulationKernel(KernelConfig(headless=True))
+        k._MAX_SNAPSHOTS = 3
+        k.init()
+        for i in range(3):
+            k.step()
+            k.save_snapshot(f"s{i}")
+        assert list(k._snapshots.keys()) == ["s0", "s1", "s2"]
+        k.restore_snapshot("s0")
+        assert list(k._snapshots.keys()) == ["s1", "s2", "s0"]
+        k.save_snapshot("s3")
+        assert list(k._snapshots.keys()) == ["s2", "s0", "s3"]
+        assert "s1" not in k._snapshots
+        assert "s1" not in k._snapshot_physics
+        k.close()
+
+    def test_global_seed_reproducibility(self):
+        # P2-15: same KernelConfig.seed -> identical subsystem RNG streams.
+        def stream(seed):
+            k = SimulationKernel(KernelConfig(headless=True, seed=seed))
+            k.init()
+            vals = [float(k.rng.random()) for _ in range(4)]
+            sensor_vals = [float(k.sensor_rng.normal(0, 0.1)) for _ in range(4)]
+            k.close()
+            return vals, sensor_vals
+
+        v1, sv1 = stream(42)
+        v2, sv2 = stream(42)
+        assert v1 == v2, "kernel.rng not reproducible across same-seed runs"
+        assert sv1 == sv2, "sensor_rng not reproducible across same-seed runs"
+
+    def test_per_episode_rng_isolation(self):
+        # P2-15: reset() advances episode_seed deterministically; each episode
+        # gets an isolated RNG stream derived from base + episode_count.
+        k = SimulationKernel(KernelConfig(headless=True, seed=42))
+        k.init()
+        assert k.episode_seed == 42
+        first = [float(k.rng.random()) for _ in range(3)]
+        k.reset()
+        assert k.episode_seed == 43
+        second = [float(k.rng.random()) for _ in range(3)]
+        assert first != second, "reset did not re-derive RNG (no episode isolation)"
+        # Re-running with same base reproduces the same episode-1 stream
+        k2 = SimulationKernel(KernelConfig(headless=True, seed=42))
+        k2.init()
+        k2.reset()
+        again = [float(k2.rng.random()) for _ in range(3)]
+        assert again == second, "episode-1 stream not reproducible from same base_seed"
+        k.close()
+        k2.close()
+
+    def test_sensor_rng_propagated_to_sensors(self):
+        # P2-15: SensorManager.set_rng spawns child RNG per sensor; IMU noise
+        # becomes reproducible from kernel seed.
+        from fusion_simulation.sensor.base import SensorConfig, SensorType
+
+        k = SimulationKernel(KernelConfig(headless=True, seed=42))
+        sm = SensorManager()
+        k.init(sensor_manager=sm)
+        sm.add_sensor(SensorConfig(name="imu0", sensor_type=SensorType.IMU, entity_id=""))
+        imu = sm.get_sensor("imu0")
+        assert imu._rng is not None, "sensor_rng not propagated to IMU"
+        noise_a = imu._add_noise([0.0, 0.0, 0.0], 0.1)
+        # Reproduce with a fresh kernel + same seed
+        k2 = SimulationKernel(KernelConfig(headless=True, seed=42))
+        sm2 = SensorManager()
+        k2.init(sensor_manager=sm2)
+        sm2.add_sensor(SensorConfig(name="imu0", sensor_type=SensorType.IMU, entity_id=""))
+        imu2 = sm2.get_sensor("imu0")
+        noise_b = imu2._add_noise([0.0, 0.0, 0.0], 0.1)
+        assert noise_a == noise_b, "sensor noise not reproducible from same kernel seed"
+        k.close()
+        k2.close()
+
+    def test_binary_sensor_encoding_roundtrip(self):
+        # P2-16: encode_sensor_payload carries camera arrays as raw bytes
+        # (under gRPC 4MB), small structs as json_native (no numpy-as-text),
+        # and decode_sensor_payload reconstructs them exactly.
+        import numpy as np
+
+        from fusion_simulation.service.encoding import (
+            ENC_EMPTY,
+            ENC_JSON_NATIVE,
+            ENC_RAW_DEPTH,
+            ENC_RAW_RGB,
+            decode_sensor_payload,
+            encode_sensor_payload,
+            encode_state_payload,
+        )
+
+        img = np.zeros((480, 640, 3), dtype=np.uint8)
+        img[0, 0] = [10, 20, 30]
+        p, enc, w, h, ch = encode_sensor_payload({"rgb": img})
+        assert enc == ENC_RAW_RGB and (w, h, ch) == (640, 480, 3)
+        assert len(p) == 640 * 480 * 3 < 4 * 1024 * 1024
+        dec = decode_sensor_payload(p, enc, w, h, ch)
+        assert np.array_equal(dec["rgb"], img)
+
+        depth = np.ones((240, 320), dtype=np.float32) * 1.5
+        p2, e2, w2, h2, _ = encode_sensor_payload({"depth": depth})
+        assert e2 == ENC_RAW_DEPTH and len(p2) == 240 * 320 * 4
+        assert np.allclose(decode_sensor_payload(p2, e2, w2, h2, 1)["depth"], depth)
+
+        sdata = {"accel": np.array([0.1, 0.2, 0.3]), "frame": np.int64(5)}
+        p3, e3, _, _, _ = encode_sensor_payload(sdata)
+        assert e3 == ENC_JSON_NATIVE
+        txt = p3.decode("utf-8")
+        assert "np." not in txt and "[[" not in txt, "numpy leaked as text: " + txt
+        dec3 = decode_sensor_payload(p3, e3, 0, 0, 0)
+        assert dec3["accel"] == [0.1, 0.2, 0.3] and dec3["frame"] == 5
+
+        assert encode_sensor_payload({})[1] == ENC_EMPTY
+
+        sp, se = encode_state_payload({"e0": {"pos": np.array([1.0, 2.0, 3.0])}})
+        assert se == ENC_JSON_NATIVE
+        stxt = sp.decode("utf-8")
+        assert "np." not in stxt
 
     def test_status(self):
         k = SimulationKernel(KernelConfig(headless=True))

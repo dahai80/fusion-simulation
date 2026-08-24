@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import numpy as np
+
 from fusion_simulation.physics.base import BodyState, PhysicsConfig, PhysicsEngine
 
 logger = logging.getLogger(__name__)
@@ -13,6 +15,7 @@ class PyBulletEngine(PhysicsEngine):
         self._client: int = -1
         self._config: PhysicsConfig = PhysicsConfig()
         self._initialized: bool = False
+        self._headless: bool = True
         self._body_map: dict[int, str] = {}
 
     def init(self, config: PhysicsConfig | None = None, headless: bool = True) -> None:
@@ -20,6 +23,7 @@ class PyBulletEngine(PhysicsEngine):
             logger.warning("PyBulletEngine already initialized, closing first")
             self.close()
         self._config = config or PhysicsConfig()
+        self._headless = headless
         try:
             import pybullet as p
 
@@ -28,6 +32,20 @@ class PyBulletEngine(PhysicsEngine):
             p.setGravity(*self._config.gravity, physicsClientId=self._client)
             p.setTimeStep(self._config.time_step, physicsClientId=self._client)
             p.setRealTimeSimulation(0, physicsClientId=self._client)
+            if self._config.seed is not None:
+                # PhysicsConfig.seed was a dead field — now seeds numpy global RNG
+                # so any RNG downstream of physics init is reproducible. PyBullet's
+                # own solver determinism comes from identical scene load order +
+                # same initial state, not an RNG (this build rejects randomSeed kwarg).
+                np.random.seed(int(self._config.seed))
+                try:
+                    p.setPhysicsEngineParameter(
+                        randomSeed=int(self._config.seed),
+                        physicsClientId=self._client,
+                    )
+                    logger.info("PyBullet randomSeed=%d applied", int(self._config.seed))
+                except TypeError:
+                    logger.debug("PyBullet build rejects randomSeed kwarg — relying on numpy seed + scene determinism")
             p.setPhysicsEngineParameter(
                 numSolverIterations=self._config.solver_iterations,
                 numSubSteps=self._config.num_sub_steps,
@@ -35,10 +53,11 @@ class PyBulletEngine(PhysicsEngine):
             )
             self._initialized = True
             logger.info(
-                "PyBulletEngine initialized: client=%d, headless=%s, dt=%.4f",
+                "PyBulletEngine initialized: client=%d, headless=%s, dt=%.4f seed=%s",
                 self._client,
                 headless,
                 self._config.time_step,
+                self._config.seed,
             )
         except ImportError:
             logger.error("PyBullet not installed. Install with: pip install pybullet")
@@ -323,6 +342,9 @@ class PyBulletEngine(PhysicsEngine):
         fov: float = 60.0,
         near: float = 0.1,
         far: float = 100.0,
+        camera_position: list[float] | None = None,
+        camera_target: list[float] | None = None,
+        camera_up: list[float] | None = None,
     ) -> dict[str, Any]:
         self._ensure_initialized()
         try:
@@ -330,15 +352,19 @@ class PyBulletEngine(PhysicsEngine):
             import pybullet as p
 
             if view_matrix is None:
-                tgt = target_position or [0.0, 0.0, 0.0]
-                view_matrix = p.computeViewMatrixFromYawPitchRoll(
-                    cameraTargetPosition=tgt,
-                    distance=distance,
-                    yaw=yaw,
-                    pitch=pitch,
-                    roll=0,
-                    upAxisIndex=2,
-                )
+                if camera_position is not None and camera_target is not None:
+                    up_axis = [float(v) for v in (camera_up or [0.0, 0.0, 1.0])]
+                    view_matrix = self._compute_view_matrix(p, camera_position, camera_target, up_axis)
+                else:
+                    tgt = target_position or camera_target or [0.0, 0.0, 0.0]
+                    view_matrix = p.computeViewMatrixFromYawPitchRoll(
+                        cameraTargetPosition=tgt,
+                        distance=distance,
+                        yaw=yaw,
+                        pitch=pitch,
+                        roll=0,
+                        upAxisIndex=2,
+                    )
             if proj_matrix is None:
                 aspect = width / max(height, 1)
                 proj_matrix = p.computeProjectionMatrixFOV(
@@ -347,12 +373,13 @@ class PyBulletEngine(PhysicsEngine):
                     nearVal=near,
                     farVal=far,
                 )
+            renderer = p.ER_TINY_RENDERER if self._headless else p.ER_BULLET_HARDWARE_OPENGL
             _, _, rgb, depth, seg = p.getCameraImage(
                 width=width,
                 height=height,
                 viewMatrix=view_matrix,
                 projectionMatrix=proj_matrix,
-                renderer=p.ER_BULLET_HARDWARE_OPENGL,
+                renderer=renderer,
                 physicsClientId=self._client,
             )
             rgb_array = np.array(rgb, dtype=np.uint8).reshape(height, width, 4)[:, :, :3]
@@ -366,8 +393,70 @@ class PyBulletEngine(PhysicsEngine):
                 "height": height,
             }
         except Exception as e:
-            logger.error("Failed to get camera image: %s", e)
+            logger.exception("Failed to get camera image (headless=%s): %s", self._headless, e)
             return {"rgb": None, "depth": None, "segmentation": None, "width": width, "height": height}
+
+    @staticmethod
+    def _compute_view_matrix(
+        p: Any,
+        eye: list[float],
+        target: list[float],
+        up: list[float],
+    ) -> list[float]:
+        import numpy as np
+
+        eye_arr = np.array(eye, dtype=np.float64)
+        target_arr = np.array(target, dtype=np.float64)
+        up_arr = np.array(up, dtype=np.float64)
+        forward = target_arr - eye_arr
+        norm = np.linalg.norm(forward)
+        if norm < 1e-9:
+            forward = np.array([0.0, 0.0, -1.0])
+        else:
+            forward = forward / norm
+        right = np.cross(forward, up_arr)
+        rnorm = np.linalg.norm(right)
+        if rnorm < 1e-9:
+            right = np.array([1.0, 0.0, 0.0])
+        else:
+            right = right / rnorm
+        up_orth = np.cross(right, forward)
+        return p.computeViewMatrix(
+            cameraEyePosition=eye_arr.tolist(),
+            cameraTargetPosition=target_arr.tolist(),
+            cameraUpVector=up_orth.tolist(),
+        )
+
+    def get_all_body_ids(self) -> list[int]:
+        if not self._initialized:
+            return []
+        return list(self._body_map.keys())
+
+    def save_state(self) -> int | None:
+        if not self._initialized:
+            return None
+        try:
+            import pybullet as p
+
+            state_id = p.saveState(physicsClientId=self._client)
+            logger.debug("PyBullet state saved: state_id=%s", state_id)
+            return state_id
+        except Exception as e:
+            logger.error("PyBullet saveState failed: %s", e)
+            return None
+
+    def restore_state(self, state_id: int) -> bool:
+        if not self._initialized or state_id is None:
+            return False
+        try:
+            import pybullet as p
+
+            p.restoreState(state_id, physicsClientId=self._client)
+            logger.debug("PyBullet state restored: state_id=%s", state_id)
+            return True
+        except Exception as e:
+            logger.error("PyBullet restoreState failed for state_id=%s: %s", state_id, e)
+            return False
 
     @property
     def is_initialized(self) -> bool:

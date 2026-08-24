@@ -2,10 +2,21 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _try_flock(fd: int, exclusive: bool) -> None:
+    try:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+    except (ImportError, OSError):
+        logger.debug("flock unavailable on this platform, skipping file lock")
 
 
 class DatasetManager:
@@ -23,9 +34,15 @@ class DatasetManager:
         self._datasets: dict[str, dict] = {}
         if idx_file.exists():
             try:
-                raw = json.loads(idx_file.read_text(encoding="utf-8"))
+                with open(idx_file, encoding="utf-8") as f:
+                    _try_flock(f.fileno(), exclusive=False)
+                    raw = json.load(f)
             except json.JSONDecodeError as e:
                 logger.error("Dataset index.json corrupt, resetting to empty: %s", e)
+                self._datasets = {}
+                return
+            except OSError as e:
+                logger.error("Failed to read dataset index.json: %s", e)
                 self._datasets = {}
                 return
             if not isinstance(raw, dict):
@@ -36,7 +53,23 @@ class DatasetManager:
 
     def _save_index(self) -> None:
         idx_file = self.data_path / "index.json"
-        idx_file.write_text(json.dumps(self._datasets, indent=2, ensure_ascii=False), encoding="utf-8")
+        payload = json.dumps(self._datasets, indent=2, ensure_ascii=False)
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(self.data_path), prefix=".index_", suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                _try_flock(f.fileno(), exclusive=True)
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, idx_file)
+            logger.debug("Dataset index saved atomically: %s", idx_file)
+        except OSError as e:
+            logger.error("Failed to save dataset index atomically: %s", e)
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     @staticmethod
     def _validate_name(name: str) -> None:
@@ -98,17 +131,24 @@ class DatasetManager:
             return {"status": "cleaned", "dataset": name, "removed": 0}
         return {"status": "cleaned", "all": True, "datasets": len(self._datasets)}
 
-    def collect_samples(self, name: str, num_samples: int = 100) -> list[dict[str, Any]]:
-        """Generate synthetic samples for training."""
+    def collect_samples(self, name: str, num_samples: int = 100, seed: int = 42) -> list[dict[str, Any]]:
+        """Generate synthetic samples for training (DEMO ONLY — not real data)."""
         import numpy as np
 
+        logger.warning(
+            "collect_samples generating SYNTHETIC data for dataset='%s' seed=%d — DEMO only, "
+            "not real training data. Use load_samples() for real imported data.",
+            name,
+            seed,
+        )
+        rng = np.random.default_rng(int(seed))
         samples = []
         for i in range(num_samples):
             samples.append(
                 {
-                    "observation": [float(x) for x in np.random.random(64)],
-                    "action": [float(x) for x in np.random.random(8)],
-                    "reward": float(np.random.random()),
+                    "observation": [float(x) for x in rng.random(64)],
+                    "action": [float(x) for x in rng.random(8)],
+                    "reward": float(rng.random()),
                 }
             )
         if name in self._datasets:
@@ -118,6 +158,43 @@ class DatasetManager:
 
             (samples_dir / "samples.json").write_text(json.dumps(samples, indent=2), encoding="utf-8")
         return samples
+
+    def load_samples(self, name: str) -> list[dict[str, Any]]:
+        """Load real imported samples from a dataset's storage path.
+
+        Reads every *.json under the dataset storage_path and flattens to a list of
+        {observation, action[, reward]} dicts. Refuses to fabricate data: returns
+        whatever is actually on disk (empty list if nothing valid).
+        """
+        info = self._datasets.get(name)
+        if info is None:
+            logger.error("load_samples: dataset '%s' not found in index", name)
+            return []
+        storage = Path(info["storage_path"])
+        samples: list[dict[str, Any]] = []
+        for f in sorted(storage.rglob("*.json")):
+            if f.name == "index.json":
+                continue
+            try:
+                raw = json.loads(f.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning("load_samples: skipping unparseable file %s: %s", f, e)
+                continue
+            if isinstance(raw, list):
+                for item in raw:
+                    if isinstance(item, dict):
+                        samples.append(item)
+            elif isinstance(raw, dict):
+                samples.append(raw)
+        valid = [s for s in samples if "observation" in s and "action" in s]
+        if len(valid) < len(samples):
+            logger.warning(
+                "load_samples: %d/%d records lack 'observation'/'action' keys, dropped",
+                len(samples) - len(valid),
+                len(samples),
+            )
+        logger.info("load_samples: loaded %d real samples for dataset='%s'", len(valid), name)
+        return valid
 
     @staticmethod
     def _count_samples(path: Path) -> int:

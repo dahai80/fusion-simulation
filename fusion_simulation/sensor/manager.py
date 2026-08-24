@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import numpy as np
+
 from fusion_simulation.sensor.base import SensorBase, SensorConfig, SensorType
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,8 @@ class SensorManager:
         self._sensors: dict[str, SensorBase] = {}
         self._physics_engine = physics_engine
         self._sim_time: float = 0.0
+        self._rng: np.random.Generator | None = None
+        self._sensor_seed_counter: int = 0
 
     @property
     def sensor_count(self) -> int:
@@ -48,11 +52,29 @@ class SensorManager:
     def set_physics_engine(self, engine: Any) -> None:
         self._physics_engine = engine
 
+    def set_rng(self, rng: np.random.Generator | None) -> None:
+        # Kernel injects an episode-isolated Generator. Propagate to existing
+        # sensors so IMU/contact noise becomes reproducible per episode.
+        self._rng = rng
+        for sensor in self._sensors.values():
+            if hasattr(sensor, "set_rng"):
+                child = self._spawn_sensor_rng()
+                sensor.set_rng(child)
+
+    def _spawn_sensor_rng(self) -> np.random.Generator | None:
+        if self._rng is None:
+            return None
+        seed = int(self._rng.integers(0, 2**31 - 1))
+        self._sensor_seed_counter += 1
+        return np.random.default_rng(seed)
+
     def add_sensor(self, config: SensorConfig) -> SensorBase:
         if config.name in self._sensors:
             logger.warning("Sensor already exists: %s, replacing", config.name)
             self.remove_sensor(config.name)
         sensor = create_sensor(config)
+        if self._rng is not None and hasattr(sensor, "set_rng"):
+            sensor.set_rng(self._spawn_sensor_rng())
         self._sensors[config.name] = sensor
         logger.info("Added sensor: %s type=%s entity=%s", config.name, config.sensor_type.value, config.entity_id)
         return sensor

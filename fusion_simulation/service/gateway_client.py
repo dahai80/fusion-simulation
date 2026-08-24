@@ -7,13 +7,19 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+def _default_instance_id() -> str:
+    return os.environ.get("FUSION_SIM_INSTANCE_ID") or str(uuid.uuid4())
 
 
 @dataclass
@@ -26,6 +32,7 @@ class GatewayConfig:
     heartbeat_interval: float = 10.0
     api_key: str = ""
     enabled: bool = False
+    instance_id: str = field(default_factory=_default_instance_id)
 
 
 @dataclass
@@ -38,6 +45,7 @@ class RegistrationPayload:
     routes: list[str] = field(default_factory=list)
     health_endpoint: str = ""
     metadata: dict[str, str] = field(default_factory=dict)
+    instance_id: str = ""
 
 
 @dataclass
@@ -106,7 +114,9 @@ class GatewayClient:
                 "protocol": "grpc",
                 "version": "0.1.0",
                 "description": "Fusion-Simulation gRPC service",
+                "instance_id": self._config.instance_id,
             },
+            instance_id=self._config.instance_id,
         )
         url = f"{self._config.gateway_url}/v1/services/register"
         headers = self._build_headers()
@@ -150,6 +160,7 @@ class GatewayClient:
             "name": self._config.service_name,
             "host": self._config.service_host,
             "port": self._config.service_port,
+            "instance_id": self._config.instance_id,
         }
         try:
             resp = self._client.post(url, json=payload, headers=headers)
@@ -174,6 +185,7 @@ class GatewayClient:
             "name": self._config.service_name,
             "host": self._config.service_host,
             "port": self._config.service_port,
+            "instance_id": self._config.instance_id,
             "health": self._health_to_dict(health),
         }
         try:
@@ -249,6 +261,7 @@ class GatewayClient:
             "routes": payload.routes,
             "health_endpoint": payload.health_endpoint,
             "metadata": payload.metadata,
+            "instance_id": payload.instance_id,
         }
 
     @staticmethod
