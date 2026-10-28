@@ -28,7 +28,9 @@ class BCTrainer:
         self.model = model
         self.allow_simulated = allow_simulated
         self._headers = {"X-Fusion-Route": os.environ.get("FUSION_MLX_ROUTE", "mlx")}
-        key = api_key or os.environ.get("FUSION_MLX_API_KEY", "")
+        from fusion_core.config import client_key
+
+        key = api_key or client_key()
         if key:
             self._headers["Authorization"] = f"Bearer {key}"
         self._history: dict[str, list[float]] = {"loss": [], "accuracy": []}

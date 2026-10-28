@@ -383,12 +383,19 @@ class TestKernelConfig:
         assert "11434" not in cfg.mlx_url
 
     def test_mlx_api_key_from_env(self, monkeypatch):
-        monkeypatch.setenv("FUSION_MLX_API_KEY", "test-key-123")
+        monkeypatch.setenv("FUSION_CLIENT_KEY", "test-key-123")
         cfg = KernelConfig()
         assert cfg.mlx_api_key == "test-key-123"
 
+    def test_mlx_api_key_legacy_env_fallback(self, monkeypatch):
+        monkeypatch.delenv("FUSION_CLIENT_KEY", raising=False)
+        monkeypatch.setenv("FUSION_MLX_API_KEY", "legacy-key-456")
+        cfg = KernelConfig()
+        assert cfg.mlx_api_key == "legacy-key-456"
+
     def test_mlx_api_key_empty_no_env(self, monkeypatch):
-        monkeypatch.delenv("FUSION_MLX_API_KEY", raising=False)
+        for var in ("FUSION_CLIENT_KEY", "FUSION_MLX_API_KEY", "MLX_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
         cfg = KernelConfig()
         assert cfg.mlx_api_key == ""
 
@@ -398,7 +405,8 @@ class TestKernelConfig:
         assert cfg.mlx_url == "http://example.com:9999/v1"
 
     def test_kernel_warns_on_empty_key(self, monkeypatch, caplog):
-        monkeypatch.delenv("FUSION_MLX_API_KEY", raising=False)
+        for var in ("FUSION_CLIENT_KEY", "FUSION_MLX_API_KEY", "MLX_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
         import logging
 
         with caplog.at_level(logging.WARNING):

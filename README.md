@@ -311,7 +311,7 @@ ruff format --check .
 - PyBullet optional — code handles `ImportError` gracefully
 - Python ≥3.12
 - Default model: `Qwen3.5-4B-bf16` via fusion-mlx (override with `FUSION_MLX_MODEL`)
-- All inference requests carry `X-Fusion-Route: mlx` + `Authorization: Bearer ${FUSION_MLX_API_KEY}`
+- All inference requests carry `X-Fusion-Route: mlx` + `Authorization: Bearer ${FUSION_CLIENT_KEY}` (resolved via fusion-core `client_key()`)
 - **Inference routes through the Fusion-Gateway (11432), not direct fusion-mlx (11434)** — per directive "建议全部使用gateway访问fusion-mlx" (issue #10 选项2 落地). The gateway forwards multimodal `image_url` content verbatim (live-verified), so issue #10's original premise (gateway cannot do multimodal) is obsolete. The sync `httpx.Client` is retained — only the base URL changed 11434→11432, no fusion-core migration. Note: the simulation's *own* OpenAI-compatible REST API (`openai_api.py`, `--openai-api-port`) is a separate service and still defaults to 11434. See [#10](https://github.com/dahai80/fusion-simulation/issues/10).
 
 ## Environment Variables
@@ -319,7 +319,7 @@ ruff format --check .
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `FUSION_MLX_URL` | Fusion-Gateway base URL proxying fusion-mlx (read by `KernelConfig`, `AgentConfig`, `GUIConfig`, CLI `--mlx-url`, `BCTrainer`) | `http://localhost:11432/v1` |
-| `FUSION_MLX_API_KEY` | fusion-mlx Bearer auth key (read by `KernelConfig`, `GUIConfig`, CLI `--api-key`, `BCTrainer`) | empty — emits a WARNING on kernel start |
+| `FUSION_CLIENT_KEY` | fusion-mlx Bearer auth key, resolved single-point via `fusion_core.config.client_key()` (read by `KernelConfig`, `GUIConfig`, CLI `--api-key`, `BCTrainer`); legacy `FUSION_MLX_API_KEY` still honored as fallback with a deprecation warning | empty — emits a WARNING on kernel start; `FUSION_PROFILE=prod` raises |
 | `FUSION_MLX_MODEL` | default model name (read by `AgentConfig`, `PolicyClient`, `BCTrainer`, GUI) | `Qwen3.5-4B-bf16` |
 | `FUSION_MLX_ROUTE` | `X-Fusion-Route` header value for fusion-mlx routing | `mlx` |
 
