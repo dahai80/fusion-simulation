@@ -13,7 +13,12 @@ from fusion_simulation import __version__
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MLX_URL = os.environ.get("FUSION_MLX_URL", "http://localhost:11432/v1")
-_DEFAULT_API_KEY = os.environ.get("FUSION_MLX_API_KEY", "")
+
+
+def _default_api_key() -> str:
+    from fusion_core.config import client_key
+
+    return client_key()
 
 
 def _bounded_int(lo: int, hi: int, name: str):
@@ -158,7 +163,9 @@ def main():
         "--gui-port", type=_bounded_int(1, 65535, "gui-port"), default=11455, help="Dashboard port (default: 11455)"
     )
     svc_start.add_argument("--mlx-url", default=_DEFAULT_MLX_URL, help="fusion-mlx base URL (env: FUSION_MLX_URL)")
-    svc_start.add_argument("--api-key", default=_DEFAULT_API_KEY, help="fusion-mlx API key (env: FUSION_MLX_API_KEY)")
+    svc_start.add_argument(
+        "--api-key", default=None, help="fusion-mlx API key (env: FUSION_CLIENT_KEY, via fusion_core client_key())"
+    )
     svc_start.add_argument(
         "--instance-id", default="", help="Multi-node instance id (env: FUSION_SIM_INSTANCE_ID); default random uuid"
     )
@@ -492,12 +499,16 @@ async def _cmd_bench(args):
 
 
 def _cmd_service_start(args):
+    from fusion_core.proc import set_process_title
+
     from fusion_simulation.core.kernel import KernelConfig
     from fusion_simulation.service.config import ServiceConfig
     from fusion_simulation.service.gateway_client import GatewayConfig
     from fusion_simulation.service.metrics_server import MetricsConfig
     from fusion_simulation.service.server import SimulationServer
 
+    set_process_title(f"fusion-sim service :{args.port}")
+    args.api_key = args.api_key or _default_api_key()
     svc_config = ServiceConfig(host=args.host, port=args.port)
     kernel_config = KernelConfig(headless=args.headless, mlx_url=args.mlx_url, mlx_api_key=args.api_key)
     metrics_config = MetricsConfig(port=args.metrics_port)

@@ -17,14 +17,16 @@ def _default_gui_mlx_url() -> str:
 
 
 def _default_gui_mlx_api_key() -> str:
-    return os.environ.get("FUSION_MLX_API_KEY", "")
+    from fusion_core.config import client_key
+
+    return client_key()
 
 
 @dataclass
 # Callers: cli._cmd_service_start -> run_dashboard(server, GUIConfig); app.api_env_check
 # Affected API: GUIConfig gains mlx_url / mlx_api_key for authenticated env_check probe
 # Data schemas: GUIConfig(host, port, metrics_url, grpc_host, grpc_port, mlx_url, mlx_api_key, auth_token)
-# User instruction: "处理issue和pr...发布补丁版本" + issue #5 (11434->11432) + issue #8 (env FUSION_MLX_API_KEY)
+# User instruction: "处理issue和pr...发布补丁版本" + issue #5 (11434->11432) + issue #8 (API key env) + issue #14 (fusion_core client_key)
 class GUIConfig:
     host: str = "127.0.0.1"
     port: int = 11455

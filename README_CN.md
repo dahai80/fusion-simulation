@@ -294,8 +294,8 @@ ruff format --check .
 
 | 变量 | 用途 | 默认值 |
 |----------|---------|---------|
-| `FUSION_MLX_URL` | fusion-mlx base URL（`KernelConfig`、`AgentConfig`、`GUIConfig`、CLI `--mlx-url`、`BCTrainer` 读取） | `http://localhost:11434/v1` |
-| `FUSION_MLX_API_KEY` | fusion-mlx Bearer 鉴权 key（`KernelConfig`、`GUIConfig`、CLI `--api-key`、`BCTrainer` 读取） | 空 — kernel 启动时输出 WARNING |
+| `FUSION_MLX_URL` | fusion-mlx base URL（`KernelConfig`、`AgentConfig`、`GUIConfig`、CLI `--mlx-url`、`BCTrainer` 读取） | `http://localhost:11432/v1` |
+| `FUSION_CLIENT_KEY` | fusion-mlx Bearer 鉴权 key，经 `fusion_core.config.client_key()` 单点解析（`KernelConfig`、`GUIConfig`、CLI `--api-key`、`BCTrainer` 读取）；legacy `FUSION_MLX_API_KEY` 仍作为回退并输出弃用警告 | 空 — kernel 启动时输出 WARNING；`FUSION_PROFILE=prod` 时抛 RuntimeError |
 | `FUSION_MLX_MODEL` | 默认模型名（`AgentConfig`、`PolicyClient`、`BCTrainer`、GUI 读取） | `Qwen3.5-4B-bf16` |
 | `FUSION_MLX_ROUTE` | fusion-mlx 路由的 `X-Fusion-Route` header 值 | `mlx` |
 

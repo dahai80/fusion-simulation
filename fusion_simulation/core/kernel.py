@@ -54,7 +54,9 @@ def _default_mlx_url() -> str:
 
 
 def _default_mlx_api_key() -> str:
-    return os.environ.get("FUSION_MLX_API_KEY", "")
+    from fusion_core.config import client_key
+
+    return client_key()
 
 
 @dataclass
@@ -122,10 +124,10 @@ class SimulationKernel:
         self._agent_rng: np.random.Generator | None = None
         if not self._config.mlx_api_key:
             logger.warning(
-                "KernelConfig.mlx_api_key 为空 (env FUSION_MLX_API_KEY 未设置); fusion-mlx 开启鉴权时 agent 调用将 401"
+                "KernelConfig.mlx_api_key 为空 (env FUSION_CLIENT_KEY 未设置); fusion-mlx 开启鉴权时 agent 调用将 401"
             )
         else:
-            logger.info("KernelConfig.mlx_api_key 来源 env FUSION_MLX_API_KEY (已注入)")
+            logger.info("KernelConfig.mlx_api_key 已注入 (fusion_core client_key 单点解析)")
         logger.info(
             "SimulationKernel created: dt=%.4f headless=%s",
             self._config.physics_dt,
