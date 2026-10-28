@@ -2,7 +2,7 @@ class FusionSimulation < Formula
   desc "Robot virtual simulation training and testing platform for Apple Silicon"
   homepage "https://github.com/dahai80/fusion-simulation"
   url "https://github.com/dahai80/fusion-simulation/releases/download/v0.1.10/fs-release.tar.gz"
-  sha256 "83e717e6c96918378fc183f827979d44cfc7e8a56da573c8df026fc04468db7f"
+  sha256 "9d31b1a7b11fcff2363a314f21a995888e9505f7feb94540616f8316af1b7200"
   license "Apache-2.0"
   head "https://github.com/dahai80/fusion-simulation.git", branch: "main"
 
