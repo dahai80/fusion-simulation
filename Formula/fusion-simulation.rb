@@ -17,6 +17,9 @@ class FusionSimulation < Formula
     system "python3.12", "-m", "venv", venv
     venv_pip = venv/"bin/pip"
     system venv_pip, "install", "--upgrade", "pip"
+    # fusion-core is not on PyPI: pre-install from git so `pip install .` can resolve fusion-core>=0.9.0
+    system venv_pip, "install",
+      "fusion-core @ git+https://github.com/dahai80/fusion-core.git@v0.10.0"
     system venv_pip, "install", "."
     (bin/"fusion-sim").write_env_script venv/"bin/fusion-sim",
       PATH: "#{venv/"bin"}:$PATH"
