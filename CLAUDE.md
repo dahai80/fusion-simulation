@@ -7,7 +7,7 @@ doc_type: guide
 title: { zh: "fusion-simulation Claude 工作指南", en: "fusion-simulation CLAUDE guide" }
 audience: engineer
 status: draft
-version: 0.1.11
+version: 0.1.12
 updated: 2026-11-07
 owner: @dahai
 source_of_truth:

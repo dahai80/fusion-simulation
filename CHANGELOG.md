@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "fusion-simulation 变更日志", en: "fusion-simulation changelog" }
 audience: engineer
 status: draft
-version: 0.1.11
+version: 0.1.12
 updated: 2026-11-07
 owner: @dahai
 source_of_truth:
@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.12] - 2026-11-07
 
 ### Added
 
