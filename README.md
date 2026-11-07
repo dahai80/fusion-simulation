@@ -1,3 +1,19 @@
+---
+doc_id: fusion-simulation/readme
+product: fusion-simulation
+class: app
+entry: service
+doc_type: readme
+title: { zh: "fusion-simulation 自述文件", en: "fusion-simulation readme" }
+audience: engineer
+status: draft
+version: 0.1.11
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - README.md
+---
+
 # Fusion-Simulation
 
 Robot virtual simulation training and testing platform for **Apple Silicon**.
