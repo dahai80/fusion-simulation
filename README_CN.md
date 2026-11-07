@@ -1,3 +1,19 @@
+---
+doc_id: fusion-simulation/readme-cn
+product: fusion-simulation
+class: app
+entry: service
+doc_type: readme
+title: { zh: "fusion-simulation 中文自述", en: "fusion-simulation readme (Chinese)" }
+audience: engineer
+status: draft
+version: 0.1.11
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - README_CN.md
+---
+
 # Fusion-Simulation
 
 面向 **Apple Silicon** 的机器人虚拟仿真训练与测试平台。
