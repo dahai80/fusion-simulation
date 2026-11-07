@@ -7,7 +7,7 @@ doc_type: readme
 title: { zh: "fusion-simulation 自述文件", en: "fusion-simulation readme" }
 audience: engineer
 status: draft
-version: 0.1.11
+version: 0.1.12
 updated: 2026-11-07
 owner: @dahai
 source_of_truth:

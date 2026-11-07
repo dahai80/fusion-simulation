@@ -7,7 +7,7 @@ doc_type: guide
 title: { zh: "fusion-simulation 代理协作规范", en: "fusion-simulation agent collaboration guide" }
 audience: engineer
 status: draft
-version: 0.1.11
+version: 0.1.12
 updated: 2026-11-07
 owner: @dahai
 source_of_truth:

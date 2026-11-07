@@ -7,7 +7,7 @@ doc_type: config-reference
 title: { zh: "fusion-simulation 配置参考", en: "fusion-simulation config reference" }
 audience: engineer
 status: draft
-version: 0.1.11
+version: 0.1.12
 updated: 2026-11-07
 owner: @dahai
 source_of_truth:

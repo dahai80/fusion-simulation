@@ -7,7 +7,7 @@ doc_type: troubleshooting
 title: { zh: "fusion-simulation 故障排查", en: "fusion-simulation troubleshooting" }
 audience: engineer
 status: draft
-version: 0.1.11
+version: 0.1.12
 updated: 2026-11-07
 owner: @dahai
 source_of_truth:
@@ -27,7 +27,7 @@ PyBullet 是可选依赖。执行 `pip install -e ".[physics]"` 或 `pip install
 要求 Python ≥ 3.12（`pyproject.toml` `requires-python`）。用 `python3.12 -m venv .venv` 重建环境。
 
 **Homebrew 安装后 `fusion-sim version` 版本号不对**
-v0.1.10 之前存在 formula 与 `__version__` 不同步问题（issue #7d57f11 已修复）；升级到 v0.1.11 或重装 `dahai80/test/fusion-simulation`。
+v0.1.10 之前存在 formula 与 `__version__` 不同步问题（issue #7d57f11 已修复）；升级到 v0.1.12 或重装 `dahai80/test/fusion-simulation`。
 
 ## 服务启动
 

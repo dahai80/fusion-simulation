@@ -7,7 +7,7 @@ doc_type: product-page
 title: { zh: "fusion-simulation 产品页", en: "fusion-simulation product page" }
 audience: engineer
 status: draft
-version: 0.1.11
+version: 0.1.12
 updated: 2026-11-07
 owner: @dahai
 source_of_truth:
