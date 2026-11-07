@@ -9,7 +9,7 @@ audience: engineer
 status: draft
 version: 0.1.12
 updated: 2026-11-07
-owner: @dahai
+owner: "@dahai"
 source_of_truth:
   - fusion_simulation/service/server.py
   - fusion_simulation/service/openai_api.py
