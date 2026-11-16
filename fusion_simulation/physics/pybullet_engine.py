@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import sys
 from typing import Any
 
 import numpy as np
@@ -28,6 +30,16 @@ class PyBulletEngine(PhysicsEngine):
             import pybullet as p
 
             mode = p.DIRECT if headless else p.GUI
+            # Linux CI/headless servers have no display: pybullet GUI connect would
+            # abort the process. macOS/Windows GUI does not need DISPLAY.
+            if (
+                mode == p.GUI
+                and sys.platform.startswith("linux")
+                and not os.environ.get("DISPLAY")
+                and not os.environ.get("WAYLAND_DISPLAY")
+            ):
+                logger.warning("GUI mode requested but no display available; falling back to DIRECT")
+                mode = p.DIRECT
             self._client = p.connect(mode)
             p.setGravity(*self._config.gravity, physicsClientId=self._client)
             p.setTimeStep(self._config.time_step, physicsClientId=self._client)
