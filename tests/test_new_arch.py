@@ -3,8 +3,12 @@ from __future__ import annotations
 import os
 
 import numpy as np
-import pybullet_data
 import pytest
+
+try:
+    import pybullet_data
+except ImportError:
+    pybullet_data = None
 
 from fusion_simulation.agent.config import AgentConfig, AgentRole
 from fusion_simulation.agent.manager import AgentHandle, AgentManager
@@ -470,6 +474,7 @@ class TestSimulationKernel:
         assert not ok
         k.close()
 
+    @pytest.mark.skipif(pybullet_data is None, reason="pybullet/pybullet_data not installed")
     def test_snapshot_restores_physics_state(self):
         k = SimulationKernel(KernelConfig(headless=True))
         k.init()
