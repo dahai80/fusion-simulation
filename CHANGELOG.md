@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "fusion-simulation 变更日志", en: "fusion-simulation changelog" }
 audience: engineer
 status: draft
-version: 0.1.12
+version: 0.1.13
 updated: 2026-11-07
 owner: "@dahai"
 source_of_truth:
@@ -21,6 +21,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.13] - 2026-11-16
+
+### Added
+
+- CI workflow (`ci.yml`): pytest + ruff gate with concurrency cancel, pip cache keyed on `pyproject.toml`, and docs-only path skip (issue #20). `docs.yml` gains the same concurrency cancel.
+
+### Fixed
+
+- Guard `pybullet_data` import in tests so the suite collects without pybullet installed.
+- PyBullet GUI connect aborts the process on displayless Linux; fall back to DIRECT with a warning (macOS/Windows GUI untouched).
+- Add `pillow` as a dependency — numpy-array image encoding silently failed when PIL was absent.
+
+### Changed
+
+- Formula: install `fusion-core` from PyPI (published there since 0.11+); the git-clone pre-install workaround is gone.
 
 ## [0.1.12] - 2026-11-07
 
