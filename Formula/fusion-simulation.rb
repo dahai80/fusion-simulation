@@ -17,9 +17,17 @@ class FusionSimulation < Formula
     system "python3.12", "-m", "venv", venv
     venv_pip = venv/"bin/pip"
     system venv_pip, "install", "--upgrade", "pip", "setuptools", "wheel"
-    # --no-build-isolation: build deps are preinstalled above, avoiding pip's
-    # isolated-build index fetch (flaky in brew's build environment)
-    system venv_pip, "install", "--no-build-isolation", "."
+    # Pin the resolver-prone web stack: pip's backtracker wanders into fastapi
+    # versions that pin anyio<4 (0.106/0.107) and dies with ResolutionImpossible.
+    # Versions mirror the verified workspace venv set (v0.1.13, 2026-11-16).
+    system venv_pip, "install",
+      "fastapi==0.139.2", "starlette==1.3.1", "anyio==4.14.2",
+      "httpx==0.28.1", "httpcore==1.0.9", "h11==0.16.0",
+      "pydantic==2.13.4", "uvicorn==0.51.0",
+      "fusion-core==0.12.1", "setproctitle==1.3.8",
+      "numpy>=1.26.0", "pillow>=10.0.0", "defusedxml>=0.7.0",
+      "grpcio>=1.60.0", "grpcio-tools>=1.60.0"
+    system venv_pip, "install", "--no-deps", "."
     (bin/"fusion-sim").write_env_script venv/"bin/fusion-sim",
       PATH: "#{venv/"bin"}:$PATH"
   end
