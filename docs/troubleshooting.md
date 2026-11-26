@@ -7,7 +7,7 @@ doc_type: troubleshooting
 title: { zh: "fusion-simulation 故障排查", en: "fusion-simulation troubleshooting" }
 audience: engineer
 status: draft
-version: 0.1.13
+version: 0.1.14
 updated: 2026-11-07
 owner: "@dahai"
 source_of_truth:
