@@ -7,7 +7,7 @@ doc_type: get-started
 title: { zh: "fusion-simulation 快速上手", en: "fusion-simulation get started" }
 audience: engineer
 status: draft
-version: 0.1.13
+version: 0.1.14
 updated: 2026-11-07
 owner: "@dahai"
 source_of_truth:
