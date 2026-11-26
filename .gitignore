@@ -20,3 +20,5 @@ htmlcov/
 .codegraph/
 CLAUDE.md
 docs/gui-prd-gap-analysis.md
+coverage.json
+benchmark_report.json
